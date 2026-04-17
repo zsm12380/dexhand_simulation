@@ -423,11 +423,11 @@
     <exclude body1="left_wrist_rod_link"        body2="right_wrist_rod_link"/>
   </contact>
 
-  <!-- <actuator>
+  <actuator>
     <position name="act_left"  joint="left_linear_rod_link"  kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
     <position name="act_right" joint="right_linear_rod_link" kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
-  </actuator> -->
+  </actuator>
 
 </mujoco>
