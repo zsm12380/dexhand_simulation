@@ -1,6 +1,6 @@
 <mujoco model="dexhand">
   <compiler angle="radian" meshdir="../meshes/" autolimits="true"/>
-
+  <!-- <option gravity="0 0 0"/> -->
   <asset>
     <mesh name="base_link" content_type="model/stl" file="base_link.STL"/>
     <mesh name="hooke_joint_link" content_type="model/stl" file="hooke_joint_link.STL"/>
@@ -120,24 +120,24 @@
           <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
           <geom type="mesh" rgba="1 1 1 1" mesh="L" contype="0" conaffinity="0"/>
 
-          <body name="left_ear_hole" pos="0.0015 0 0">
+          <!-- <body name="left_ear_hole" pos="0.0015 0 0">
             <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
             <geom type="sphere" size="0.0008" rgba="1 0 0 1" contype="0" conaffinity="0"/>
-          </body>
+          </body> -->
 
-          <site name="left_ear_site" pos="0.0015 0 0" size="0.001" rgba="0 1 0 1"/>
+          <site name="left_ear_site" pos="-0.0015 0 0" size="0.001" rgba="0 1 0 1"/>
 
         </body>
         <body name="right_ear_link" pos="-0.033638 0.0195 0.0034774" quat="0.707105 0 0 -0.707108">
           <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
           <geom type="mesh" rgba="1 1 1 1" mesh="R" contype="0" conaffinity="0"/>
 
-          <body name="right_ear_hole" pos="0.0015 0 0">
+          <!-- <body name="right_ear_hole" pos="0.0015 0 0">
             <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
             <geom type="sphere" size="0.0008" rgba="0 1 0 1" contype="0" conaffinity="0"/>
-          </body>
+          </body> -->
 
-          <!-- <site name="right_ear_site" pos="0.0015 0 0" size="0.001" rgba="0 1 0 1"/> -->
+          <site name="right_ear_site" pos="0.0015 0 0" size="0.001" rgba="0 1 0 1"/>
 
         </body>
         <body name="THJ4" pos="-0.00931061 -0.031004 0.043425" quat="0.674378 -0.67438 -0.212632 -0.212633">
@@ -284,12 +284,12 @@
                     <joint name="left_virtual_link_A3_link" pos="0 0 0" axis="-1 0 0"/>
                     <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_A3_link"/>
 
-                    <body name="left_a3_hole" pos="0.001 0.003 0.0005" >
+                    <!-- <body name="left_a3_hole" pos="0.001 0.003 0.0005" >
                       <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
                       <geom type="sphere" size="0.0008" rgba="1 0 0 1" contype="0" conaffinity="0"/>
-                    </body>
+                    </body> -->
 
-                    <site name="left_a3_site" pos="0.001 0.003 0.0005" size="0.001" rgba="1 0 0 1"/>
+                    <site name="left_a3_site" pos="0.00 0.00 -0.00" size="0.001" rgba="1 0 0 1"/>
 
                   </body>
                 </body>
@@ -332,12 +332,12 @@
                     <joint name="right_virtual_link_A3_link" pos="0 0 0" axis="-1 0 0"/>
                     <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_A3_link"/>
 
-                    <body name="right_a3_hole" pos="0.0015 0 0">
+                    <!-- <body name="right_a3_hole" pos="0.0015 0 0">
                       <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
                       <geom type="sphere" size="0.0008" rgba="0 1 0 1" contype="0" conaffinity="0"/>
-                    </body>
+                    </body> -->
 
-                    <!-- <site name="right_a3_site" pos="0.0015 0 0" size="0.001" rgba="1 0 0 1"/> -->
+                    <site name="right_a3_site" pos="0.00 0 0" size="0.001" rgba="1 0 0 1"/>
 
                   </body>
                 </body>
@@ -350,7 +350,7 @@
   </worldbody>
   <equality>
 
-    <connect name="left_parallel_close"
+    <!-- <connect name="left_parallel_close"
         body1="left_a3_hole"
         body2="left_ear_hole"
         anchor="0.01950014 -0.01371972 0.21347740"
@@ -362,9 +362,9 @@
             body2="right_ear_hole"
             anchor="-0.01949986 -0.01371988 0.21347740"
             solref="0.002 1"
-            solimp="0.95 0.995 0.001"/>
+            solimp="0.95 0.995 0.001"/> -->
     
-    <!-- <connect name="left_parallel_close"
+    <connect name="left_parallel_close"
          site1="left_a3_site"
          site2="left_ear_site"
          solref="0.002 1"
@@ -374,7 +374,7 @@
             site1="right_a3_site"
             site2="right_ear_site"            
             solref="0.002 1"
-            solimp="0.95 0.995 0.001"/>  -->
+            solimp="0.95 0.995 0.001"/> 
 
     <joint name="eq_FFJ1"
             joint1="FFJ1" joint2="FFJ2"
@@ -423,11 +423,11 @@
     <exclude body1="left_wrist_rod_link"        body2="right_wrist_rod_link"/>
   </contact>
 
-  <actuator>
+  <!-- <actuator>
     <position name="act_left"  joint="left_linear_rod_link"  kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
     <position name="act_right" joint="right_linear_rod_link" kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
-  </actuator>
+  </actuator> -->
 
 </mujoco>
