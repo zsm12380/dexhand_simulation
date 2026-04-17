@@ -1,0 +1,433 @@
+<mujoco model="dexhand">
+  <compiler angle="radian" meshdir="../meshes/" autolimits="true"/>
+
+  <asset>
+    <mesh name="base_link" content_type="model/stl" file="base_link.STL"/>
+    <mesh name="hooke_joint_link" content_type="model/stl" file="hooke_joint_link.STL"/>
+    <mesh name="palm_wrist_connector_link" content_type="model/stl" file="palm_wrist_connector_link.STL"/>
+    <mesh name="palm_link" content_type="model/stl" file="palm_link.STL"/>
+    <mesh name="THJ4" content_type="model/stl" file="THJ4.STL"/>
+    <mesh name="THJ3" content_type="model/stl" file="THJ3.STL"/>
+    <mesh name="THJ2" content_type="model/stl" file="THJ2.STL"/>
+    <mesh name="THJ1" content_type="model/stl" file="THJ1.STL"/>
+    <mesh name="THJ0" content_type="model/stl" file="THJ0.STL"/>
+    <mesh name="FFJ4" content_type="model/stl" file="FFJ4.STL"/>
+    <mesh name="FFJ3" content_type="model/stl" file="FFJ3.STL"/>
+    <mesh name="FFJ2" content_type="model/stl" file="FFJ2.STL"/>
+    <mesh name="FFJ1" content_type="model/stl" file="FFJ1.STL"/>
+    <mesh name="FFJ0" content_type="model/stl" file="FFJ0.STL"/>
+    <mesh name="MFJ4" content_type="model/stl" file="MFJ4.STL"/>
+    <mesh name="MFJ3" content_type="model/stl" file="MFJ3.STL"/>
+    <mesh name="MFJ2" content_type="model/stl" file="MFJ2.STL"/>
+    <mesh name="MFJ1" content_type="model/stl" file="MFJ1.STL"/>
+    <mesh name="MFJ0" content_type="model/stl" file="MFJ0.STL"/>
+    <mesh name="RFJ4" content_type="model/stl" file="RFJ4.STL"/>
+    <mesh name="RFJ3" content_type="model/stl" file="RFJ3.STL"/>
+    <mesh name="RFJ2" content_type="model/stl" file="RFJ2.STL"/>
+    <mesh name="RFJ1" content_type="model/stl" file="RFJ1.STL"/>
+    <mesh name="RFJ0" content_type="model/stl" file="RFJ0.STL"/>
+    <mesh name="LFJ4" content_type="model/stl" file="LFJ4.STL"/>
+    <mesh name="LFJ3" content_type="model/stl" file="LFJ3.STL"/>
+    <mesh name="LFJ2" content_type="model/stl" file="LFJ2.STL"/>
+    <mesh name="LFJ1" content_type="model/stl" file="LFJ1.STL"/>
+    <mesh name="LFJ0" content_type="model/stl" file="LFJ0.STL"/>
+    <mesh name="palm_central_link" content_type="model/stl" file="palm_central_link.STL"/>
+    <mesh name="L" content_type="model/stl" file="L.STL"/>
+    <mesh name="R" content_type="model/stl" file="R.STL"/>
+    <mesh name="left_linear_rod_link" content_type="model/stl" file="left_linear_rod_link.STL"/>
+    <mesh name="left_virtual_link_B1_link" content_type="model/stl" file="left_virtual_link_B1_link.STL"/>
+    <mesh name="left_virtual_link_B2_link" content_type="model/stl" file="left_virtual_link_B2_link.STL"/>
+    <mesh name="left_virtual_link_B3_link" content_type="model/stl" file="left_virtual_link_B3_link.STL"/>
+    <mesh name="left_wrist_rod_link" content_type="model/stl" file="left_wrist_rod_link.STL"/>
+    <mesh name="left_virtual_link_A1_link" content_type="model/stl" file="left_virtual_link_A1_link.STL"/>
+    <mesh name="left_virtual_link_A2_link" content_type="model/stl" file="left_virtual_link_A2_link.STL"/>
+    <mesh name="left_virtual_link_A3_link" content_type="model/stl" file="left_virtual_link_A3_link.STL"/>
+    <mesh name="right_linear_rod_link" content_type="model/stl" file="right_linear_rod_link.STL"/>
+    <mesh name="right_virtual_link_B1_link" content_type="model/stl" file="right_virtual_link_B1_link.STL"/>
+    <mesh name="right_virtual_link_B2_link" content_type="model/stl" file="right_virtual_link_B2_link.STL"/>
+    <mesh name="right_virtual_link_B3_link" content_type="model/stl" file="right_virtual_link_B3_link.STL"/>
+    <mesh name="right_wrist_rod_link" content_type="model/stl" file="right_wrist_rod_link.STL"/>
+    <mesh name="right_virtual_link_A1_link" content_type="model/stl" file="right_virtual_link_A1_link.STL"/>
+    <mesh name="right_virtual_link_A2_link" content_type="model/stl" file="right_virtual_link_A2_link.STL"/>
+    <mesh name="right_virtual_link_A3_link" content_type="model/stl" file="right_virtual_link_A3_link.STL"/>
+  </asset>
+
+  <default>
+    <default class="dexhand">
+      <joint axis="1 0 0" damping="10" frictionloss="0.4" armature="0.0002"/>
+      <geom  solref="0.005 1" solimp="0.95 0.995 0.001"/>
+      <position ctrlrange="0 1.5708" forcerange="-10 50" kp="20"/>
+
+      <!-- 拇指基部（THJ4/THJ3） -->
+      <default class="thumb_base">
+        <joint range="-1.0472 1.0472" axis="1 0 0" damping="0.5"/>
+        <position ctrlrange="-1.0472 1.0472" kp="20"/>
+      </default>
+
+      <!-- 拇指弯曲（THJ2/THJ1） -->
+      <default class="thumb_flex">
+        <joint range="0 1.5708" axis="-1 0 0" damping="0.5"/>
+        <position ctrlrange="0 1.5708" kp="20"/>
+      </default>
+
+      <!-- 手指外展 -->
+      <default class="finger_abd">
+        <joint range="-0.2618 0.2618" axis="1 0 0"/>
+        <position ctrlrange="-0.2618 0.2618" kp="10"/>
+      </default>
+
+      <!-- 手指弯曲 -->
+      <default class="finger_flex">
+        <joint range="0 1.5708" axis="-1 0 0" damping="0.5"/>
+        <position ctrlrange="0 1.5708" kp="20"/>
+      </default>
+
+      <!-- 手腕 FAJ -->
+    <default class="wrist">
+      <joint range="-0.3491 0.3491" damping="1.0"/>
+      <position ctrlrange="-0.3491 0.3491" kp="40"/>
+    </default>
+
+      <!-- 线性推杆（滑块） -->
+      <default class="linear_rod">
+        <joint type="slide" range="-0.02 0.02" damping="2.0"/>
+        <position ctrlrange="-0.02 0.02" kp="5000" forcerange="-200 200"/>
+      </default>
+
+      <!-- 虚拟连杆/万向杆 -->
+      <default class="virtual">
+        <joint damping="0.005" armature="0.00005"/>
+        <geom contype="0" conaffinity="0"/>   <!-- 通常虚拟杆不参与碰撞 -->
+      </default>
+    </default>
+  </default>
+
+
+
+  <worldbody>
+    <geom type="mesh" mesh="base_link" contype="0" conaffinity="0"/>
+    <body name="hooke_joint_link" pos="0 0.017433 0.21">
+      <inertial pos="1.16913e-09 -6.63471e-09 4.47655e-11" quat="0 0.707107 0 0.707107" mass="0.00243603" diaginertia="2.15582e-07 2.11795e-07 1.1748e-07"/>
+      <joint name="FAJ1" class="wrist" pos="0 0 0" axis="-1 0 0" range="-0.3491 0.3491" actuatorfrcrange="-10 10"/>
+      <geom type="mesh" rgba="1 1 1 1" mesh="hooke_joint_link"/>
+      <body name="palm_wrist_connector_link" pos="0 0.0024852 0" quat="0.707105 0 0 0.707108">
+        <inertial pos="0.0154651 -0.0126036 0.0432511" quat="0.00307436 0.628103 -0.0303921 0.777531" mass="0.0605954" diaginertia="9.28813e-05 6.69316e-05 4.14802e-05"/>
+        <joint name="FAJ3" class="wrist" pos="0 0 0" axis="1 0 0" range="-0.3491 0.3491" actuatorfrcrange="-10 10"/>
+        <geom type="mesh" rgba="1 1 1 1" mesh="palm_wrist_connector_link"/>
+        <geom pos="-0.0138 0 0.01485" quat="0.707105 0 0 -0.707108" type="mesh" rgba="1 1 1 1" mesh="palm_link"/>
+        <geom pos="0.00675 -7.54844e-08 0.08745" quat="0.707105 0 0 -0.707108" type="mesh" rgba="1 1 1 1" mesh="palm_central_link"/>
+        <body name="left_ear_link" pos="-0.033638 -0.0195 0.0034774" quat="0.707105 0 0 -0.707108">
+          <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="L" contype="0" conaffinity="0"/>
+
+          <!-- <body name="left_ear_hole" pos="0.0015 0 0">
+            <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+            <geom type="sphere" size="0.0008" rgba="1 0 0 1" contype="0" conaffinity="0"/>
+          </body> -->
+
+          <site name="left_ear_site" pos="0.0015 0 0" size="0.001" rgba="0 1 0 1"/>
+
+        </body>
+        <body name="right_ear_link" pos="-0.033638 0.0195 0.0034774" quat="0.707105 0 0 -0.707108">
+          <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="R" contype="0" conaffinity="0"/>
+
+          <!-- <body name="right_ear_hole" pos="0.0015 0 0">
+            <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+            <geom type="sphere" size="0.0008" rgba="0 1 0 1" contype="0" conaffinity="0"/>
+          </body> -->
+
+          <site name="right_ear_site" pos="0.0015 0 0" size="0.001" rgba="0 1 0 1"/>
+
+        </body>
+        <body name="THJ4" pos="-0.00931061 -0.031004 0.043425" quat="0.674378 -0.67438 -0.212632 -0.212633">
+          <inertial pos="0.0152576 -0.000588818 -7.107e-06" quat="0.999784 0.00616103 0.00011789 -0.0198733" mass="0.00757808" diaginertia="6.4366e-07 4.59268e-07 4.47714e-07"/>
+          <joint name="THJ4" class="thumb_base" pos="0 0 0" axis="1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-10 10"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="THJ4"/>
+          <body name="THJ3" pos="0.031 0 0" quat="0.50302 -0.49696 0.503023 -0.49696">
+            <inertial pos="0.000293898 0.000178552 0.0153774" quat="0.663522 -0.0219818 -0.0191561 0.747588" mass="0.00736477" diaginertia="1.07482e-06 8.74685e-07 3.80232e-07"/>
+            <joint name="THJ3" class="thumb_base" pos="0 0 0" axis="-1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-10 10"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="THJ3"/>
+            <body name="THJ2" pos="0.00175 0.00027771 0.034999" quat="0.7071 -0.00280537 -0.00280536 -0.707103">
+              <inertial pos="-0.000194157 -0.0011477 0.0156232" quat="0.999855 -0.0100212 -0.0127069 0.00526829" mass="0.00547862" diaginertia="9.11771e-07 7.75981e-07 1.98766e-07"/>
+              <joint name="THJ2" class="thumb_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="THJ2"/>
+              <body name="THJ1" pos="0 0.00017925 0.035" quat="0.999997 -0.0025608 0 0">
+                <inertial pos="-0.000140509 -0.00431797 0.012817" quat="0.959852 -0.278651 0.00931821 0.0308464" mass="0.00714019" diaginertia="1.17686e-06 1.05093e-06 3.68397e-07"/>
+                <joint name="THJ1" class="thumb_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="THJ1"/>
+                <geom pos="0 -0.0055 0.0285" quat="1 0 0 0" type="mesh" mesh="THJ0"/>
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="FFJ4" pos="-0.0132501 -0.034504 0.09645">
+          <inertial pos="-8.36034e-05 0.000663676 0.0077374" quat="-0.129526 0.728452 -0.183808 0.647144" mass="0.00421554" diaginertia="2.03185e-07 1.92848e-07 1.21111e-07"/>
+          <joint name="FFJ4" class="finger_abd" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-10 10"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="FFJ4"/>
+          <body name="FFJ3" pos="0.0015 0 0.018" quat="0.707105 0 0 -0.707108">
+            <inertial pos="-0.000161128 -0.00102031 0.0227557" quat="0.999977 0.00475844 0.00468901 -0.00116469" mass="0.00659733" diaginertia="1.65482e-06 1.47538e-06 2.38524e-07"/>
+            <joint name="FFJ3" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="FFJ3"/>
+            <body name="FFJ2" pos="0 0.0005 0.045001">
+              <inertial pos="-0.000109562 -0.00254 0.0114474" quat="0.999295 -0.0372176 0.00499748 0.000531332" mass="0.00349513" diaginertia="3.21424e-07 2.52234e-07 1.10456e-07"/>
+              <joint name="FFJ2" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="FFJ2"/>
+              <body name="FFJ1" pos="0 0 0.025">
+                <inertial pos="-0.000119087 -0.00127506 0.016083" quat="0.737008 0.0331895 -0.0491214 0.673279" mass="0.00658786" diaginertia="5.29708e-07 4.80112e-07 1.98274e-07"/>
+                <joint name="FFJ1" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="FFJ1"/>
+                <geom pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="FFJ0"/>
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="MFJ4" pos="-0.01325 -0.011504 0.10445">
+          <inertial pos="-9.02848e-05 0.000655128 0.00773023" quat="-0.129142 0.728558 -0.183392 0.64722" mass="0.0041897" diaginertia="2.03128e-07 1.92772e-07 1.21059e-07"/>
+          <joint name="MFJ4" class="finger_abd" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-10 10"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="MFJ4"/>
+          <body name="MFJ3" pos="0.0015 0 0.018" quat="0.707105 0 0 -0.707108">
+            <inertial pos="-0.000161128 -0.00102031 0.0227557" quat="0.999977 0.00475849 0.00468902 -0.00116469" mass="0.00659733" diaginertia="1.65482e-06 1.47538e-06 2.38524e-07"/>
+            <joint name="MFJ3" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="MFJ3"/>
+            <body name="MFJ2" pos="0 0.0005 0.045001">
+              <inertial pos="-0.000109556 -0.00254 0.0114474" quat="0.999295 -0.0372174 0.00499739 0.000531454" mass="0.00349513" diaginertia="3.21424e-07 2.52234e-07 1.10456e-07"/>
+              <joint name="MFJ2" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="MFJ2"/>
+              <body name="MFJ1" pos="0 0 0.025">
+                <inertial pos="-0.000119093 -0.00127505 0.016083" quat="0.737009 0.0331889 -0.0491216 0.673279" mass="0.00658787" diaginertia="5.29708e-07 4.80112e-07 1.98274e-07"/>
+                <joint name="MFJ1" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="MFJ1"/>
+                <geom pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="MFJ0"/>
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="RFJ4" pos="-0.01325 0.011496 0.09645">
+          <inertial pos="-9.02848e-05 0.000655128 0.00773023" quat="-0.129142 0.728558 -0.183392 0.64722" mass="0.0041897" diaginertia="2.03128e-07 1.92772e-07 1.21059e-07"/>
+          <joint name="RFJ4" class="finger_abd" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-10 10"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="RFJ4"/>
+          <body name="RFJ3" pos="0.0015 0 0.018" quat="0.707105 0 0 -0.707108">
+            <inertial pos="-0.000161128 -0.00102031 0.0227557" quat="0.999977 0.00475844 0.00468901 -0.00116469" mass="0.00659733" diaginertia="1.65482e-06 1.47538e-06 2.38524e-07"/>
+            <joint name="RFJ3" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="RFJ3"/>
+            <body name="RFJ2" pos="0 0.0005 0.045001">
+              <inertial pos="-0.000109552 -0.00254 0.0114474" quat="0.999295 -0.0372175 0.00499738 0.000531496" mass="0.00349513" diaginertia="3.21424e-07 2.52234e-07 1.10456e-07"/>
+              <joint name="RFJ2" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="RFJ2"/>
+              <body name="RFJ1" pos="0 0 0.025">
+                <inertial pos="5.08442e-05 -0.00152069 0.0155178" quat="0.696832 0.0620197 -0.0590811 0.712101" mass="0.00619517" diaginertia="4.92887e-07 4.37523e-07 1.8128e-07"/>
+                <joint name="RFJ1" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="RFJ1"/>
+                <body name="RFJ0" pos="0.0001 0.0028 0.025">
+                  <inertial pos="0 0.0025 0" quat="0.707107 0 0 0.707107" mass="0.000392699" diaginertia="4.90874e-09 3.27249e-09 3.27249e-09"/>
+                  <joint name="RFJ0" pos="0 0 0" axis="0 -1 0"/>
+                  <geom type="mesh" mesh="RFJ0"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+        <body name="LFJ4" pos="-0.0132499 0.034496 0.08845">
+          <inertial pos="-9.02848e-05 0.000655128 0.00773023" quat="-0.129142 0.728558 -0.183392 0.64722" mass="0.0041897" diaginertia="2.03128e-07 1.92772e-07 1.21059e-07"/>
+          <joint name="LFJ4" class="finger_abd" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-10 10"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="LFJ4"/>
+          <body name="LFJ3" pos="0.0015 0 0.018" quat="0.707105 0 0 -0.707108">
+            <inertial pos="-0.000161128 -0.00102031 0.0227557" quat="0.999977 0.00475844 0.00468901 -0.00116469" mass="0.00659733" diaginertia="1.65482e-06 1.47538e-06 2.38524e-07"/>
+            <joint name="LFJ3" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="LFJ3"/>
+            <body name="LFJ2" pos="0 0.0005 0.045001">
+              <inertial pos="-0.000109561 -0.00254 0.0114474" quat="0.999295 -0.0372177 0.00499744 0.000531371" mass="0.00349513" diaginertia="3.21424e-07 2.52234e-07 1.10456e-07"/>
+              <joint name="LFJ2" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="LFJ2"/>
+              <body name="LFJ1" pos="0 0 0.025">
+                <inertial pos="-0.000119093 -0.00127506 0.016083" quat="0.737009 0.0331891 -0.0491217 0.673278" mass="0.00658787" diaginertia="5.29708e-07 4.80112e-07 1.98274e-07"/>
+                <joint name="LFJ1" class="finger_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="LFJ1"/>
+                <geom pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="LFJ0"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="left_linear_rod_link" pos="0.033 -0.022067 0.16705" quat="0.499998 -0.5 -0.5 -0.500002">
+      <inertial pos="-0.00324552 -0.000100107 2.30456e-09" quat="0.5 0.5 0.5 0.5" mass="0.00268273" diaginertia="3.82944e-07 3.81911e-07 4.2349e-08"/>
+      <joint name="left_linear_rod_link" class="linear_rod" pos="0 0 0" axis="1 0 0" type="slide" range="-0.02 0.02" actuatorfrcrange="-10 10"/>
+      <geom type="mesh" rgba="1 1 1 1" mesh="left_linear_rod_link"/>
+      <body name="left_virtual_link_B1_link" childclass="virtual" pos="0.017333 0 0" quat="0.499998 0.5 0.500002 0.5">
+        <inertial pos="-0.01075 4.86431e-09 -1.73961e-08" mass="0.00033869" diaginertia="4.12212e-09 3.14449e-09 3.14431e-09"/>
+        <joint name="left_virtual_link_B1_link" pos="0 0 0" axis="1 0 0"/>
+        <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_B1_link"/>
+        <body name="left_virtual_link_B2_link" pos="-0.01075 0 0" quat="0.707105 0 0 -0.707108">
+          <inertial pos="-4.86435e-09 0 -1.73961e-08" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.14449e-09 3.14431e-09"/>
+          <joint name="left_virtual_link_B2_link" pos="0 0 0" axis="-1 0 0"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_B2_link"/>
+          <body name="left_virtual_link_B3_link" quat="-2.59734e-06 0.707105 2.59735e-06 0.707108">
+            <inertial pos="-1.73961e-08 0 4.86435e-09" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.14431e-09 3.14449e-09"/>
+            <joint name="left_virtual_link_B3_link" pos="0 0 0" axis="-1 0 0"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_B3_link"/>
+            <body name="left_wrist_rod_link" quat="0.322535 0.629261 0.629263 0.322536">
+              <inertial pos="0.00165128 0.00413888 0.0145433" quat="0.985297 -0.135025 0.0845417 0.061727" mass="0.00324706" diaginertia="3.79232e-07 3.0142e-07 9.76123e-08"/>
+              <joint name="left_wrist_rod_link" class="virtual" pos="0 0 0" axis="-1 0 0"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="left_wrist_rod_link"/>
+              <body name="left_virtual_link_A1_link" childclass="virtual" pos="0.00375 0.0083476 0.029095">
+                <inertial pos="0 -4.91286e-09 -1.73825e-08" mass="0.00033869" diaginertia="4.12212e-09 3.14449e-09 3.14431e-09"/>
+                <joint name="left_virtual_link_A1_link" pos="0 0 0" axis="-1 0 0"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_A1_link"/>
+                <body name="left_virtual_link_A2_link" quat="0.707105 0 0 -0.707108">
+                  <inertial pos="4.91286e-09 0 -1.73825e-08" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.14449e-09 3.14431e-09"/>
+                  <joint name="left_virtual_link_A2_link" pos="0 0 0" axis="-1 0 0"/>
+                  <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_A2_link"/>
+                  <body name="left_virtual_link_A3_link" quat="-2.59734e-06 0.707105 2.59735e-06 0.707108">
+                    <inertial pos="-1.73825e-08 0 -4.91286e-09" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.14431e-09 3.14449e-09"/>
+                    <joint name="left_virtual_link_A3_link" pos="0 0 0" axis="-1 0 0"/>
+                    <geom type="mesh" rgba="1 1 1 1" mesh="left_virtual_link_A3_link"/>
+
+                    <!-- <body name="left_a3_hole" pos="0.0015 0 0">
+                      <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+                      <geom type="sphere" size="0.0008" rgba="1 0 0 1" contype="0" conaffinity="0"/>
+                    </body> -->
+
+                    <site name="left_a3_site" pos="0.001 0.003 0.0005" size="0.001" rgba="1 0 0 1"/>
+
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+    <body name="right_linear_rod_link" pos="-0.033 -0.022067 0.16705" quat="0.499998 -0.5 -0.5 -0.500002">
+      <inertial pos="-0.00315516 0.00010011 2.30458e-09" quat="0.5 0.5 0.5 0.5" mass="0.00268273" diaginertia="3.82944e-07 3.81911e-07 4.2349e-08"/>
+      <joint name="right_linear_rod_link" class="linear_rod" pos="0 0 0" axis="1 0 0" type="slide" range="-0.02 0.02" actuatorfrcrange="-10 10"/>
+      <geom type="mesh" rgba="1 1 1 1" mesh="right_linear_rod_link"/>
+      <body name="right_virtual_link_B1_link" childclass="virtual" pos="0.017423 0 0" quat="0.499998 0.5 0.500002 0.5">
+        <inertial pos="0.01075 -3.16096e-09 -1.77847e-08" mass="0.00033869" diaginertia="4.12212e-09 3.1445e-09 3.1443e-09"/>
+        <joint name="right_virtual_link_B1_link" pos="0 0 0" axis="1 0 0"/>
+        <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_B1_link"/>
+        <body name="right_virtual_link_B2_link" pos="0.01075 0 0" quat="0.707105 0 0 -0.707108">
+          <inertial pos="3.16081e-09 0 -1.77847e-08" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.1445e-09 3.1443e-09"/>
+          <joint name="right_virtual_link_B2_link" pos="0 0 0" axis="1 0 0"/>
+          <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_B2_link"/>
+          <body name="right_virtual_link_B3_link" quat="-2.59734e-06 0.707105 2.59735e-06 0.707108">
+            <inertial pos="-1.77847e-08 0 -3.16081e-09" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.1443e-09 3.1445e-09"/>
+            <joint name="right_virtual_link_B3_link" pos="0 0 0" axis="-1 0 0"/>
+            <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_B3_link"/>
+            <body name="right_wrist_rod_link" quat="0.322535 0.629261 0.629263 0.322536">
+              <inertial pos="-0.00185208 0.00417083 0.0145019" quat="0.985257 -0.136512 -0.0910548 -0.0483901" mass="0.00324706" diaginertia="3.79232e-07 3.0142e-07 9.76121e-08"/>
+              <joint name="right_wrist_rod_link" pos="0 0 0" axis="-1 0 0"/>
+              <geom type="mesh" rgba="1 1 1 1" mesh="right_wrist_rod_link"/>
+              <body name="right_virtual_link_A1_link" pos="-0.00375 0.0083476 0.029004">
+                <inertial pos="0 2.85474e-09 -1.78364e-08" mass="0.00033869" diaginertia="4.12212e-09 3.1445e-09 3.14429e-09"/>
+                <joint name="right_virtual_link_A1_link" pos="0 0 0" axis="-1 0 0"/>
+                <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_A1_link"/>
+                <body name="right_virtual_link_A2_link" quat="0.707105 0 0 -0.707108">
+                  <inertial pos="-2.85474e-09 0 -1.78364e-08" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.1445e-09 3.14429e-09"/>
+                  <joint name="right_virtual_link_A2_link" pos="0 0 0" axis="-1 0 0"/>
+                  <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_A2_link"/>
+                  <body name="right_virtual_link_A3_link" quat="-2.59734e-06 0.707105 2.59735e-06 0.707108">
+                    <inertial pos="-1.78364e-08 0 2.85474e-09" quat="0.707107 0 0 0.707107" mass="0.00033869" diaginertia="4.12212e-09 3.14429e-09 3.1445e-09"/>
+                    <joint name="right_virtual_link_A3_link" pos="0 0 0" axis="-1 0 0"/>
+                    <geom type="mesh" rgba="1 1 1 1" mesh="right_virtual_link_A3_link"/>
+
+                    <!-- <body name="right_a3_hole" pos="0.0015 0 0">
+                      <inertial pos="0 0 0" mass="1e-6" diaginertia="1e-12 1e-12 1e-12"/>
+                      <geom type="sphere" size="0.0008" rgba="0 1 0 1" contype="0" conaffinity="0"/>
+                    </body> -->
+
+                    <site name="right_a3_site" pos="0.0015 0 0" size="0.001" rgba="1 0 0 1"/>
+
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <equality>
+
+    <!-- <connect name="left_parallel_close"
+        body1="left_a3_hole"
+        body2="left_ear_hole"
+        anchor="0.01950014 -0.01371972 0.21347740"
+        solref="0.002 1"
+        solimp="0.95 0.995 0.001"/>
+
+    <connect name="right_parallel_close"
+            body1="right_a3_hole"
+            body2="right_ear_hole"
+            anchor="-0.01949986 -0.01371988 0.21347740"
+            solref="0.002 1"
+            solimp="0.95 0.995 0.001"/> -->
+    
+    <connect name="left_parallel_close"
+         site1="left_a3_site"
+         site2="left_ear_site"
+         solref="0.002 1"
+         solimp="0.95 0.995 0.001"/>
+
+    <connect name="right_parallel_close"
+            site1="right_a3_site"
+            site2="right_ear_site"            
+            solref="0.002 1"
+            solimp="0.95 0.995 0.001"/> 
+
+    <joint name="eq_FFJ1"
+            joint1="FFJ1" joint2="FFJ2"
+            polycoef="0.0021 0.442 0.886 0.6882 0.222"
+            solref="0.001 1" solimp="0.95 0.995 0.001"/>
+
+    <joint name="eq_MFJ1"
+            joint1="MFJ1" joint2="MFJ2"
+            polycoef="0.0021 0.442 0.886 0.6882 0.222"
+            solref="0.001 1" solimp="0.95 0.995 0.001"/>
+
+    <joint name="eq_RFJ1"
+            joint1="RFJ1" joint2="RFJ2"
+            polycoef="0.0021 0.442 0.886 0.6882 0.222"
+            solref="0.001 1" solimp="0.95 0.995 0.001"/>
+
+    <joint name="eq_LFJ1"
+            joint1="LFJ1" joint2="LFJ2"
+            polycoef="0.0021 0.442 0.886 0.6882 0.222"
+            solref="0.001 1" solimp="0.95 0.995 0.001"/>
+
+    <!-- <joint name="eq_FAJ2"
+            joint1="FAJ2" joint2="FAJ1"
+            polycoef="0.000005 0.0001 0.5136 0.0015 0.038"
+            solref="0.001 1" solimp="0.95 0.995 0.001"/> -->
+  </equality>
+
+  <contact>
+    <!-- 闭环端点：已用 equality connect 约束，不要再碰撞 -->
+    <exclude body1="left_virtual_link_A3_link" body2="left_ear_link"/>
+    <exclude body1="right_virtual_link_A3_link" body2="right_ear_link"/>
+  
+      <!-- 同指关节：已用 equality joint 约束，不要再碰撞 -->
+
+    <!-- 并联杆系靠近手掌区域，建议先排除，避免“接触-约束打架” -->
+    <exclude body1="left_virtual_link_A1_link"  body2="palm_wrist_connector_link"/>
+    <exclude body1="left_virtual_link_A2_link"  body2="palm_wrist_connector_link"/>
+    <exclude body1="left_wrist_rod_link"        body2="palm_wrist_connector_link"/>
+
+    <exclude body1="right_virtual_link_A1_link" body2="palm_wrist_connector_link"/>
+    <exclude body1="right_virtual_link_A2_link" body2="palm_wrist_connector_link"/>
+    <exclude body1="right_wrist_rod_link"       body2="palm_wrist_connector_link"/>
+
+    <!-- 可选：左右并联机构互相不碰 -->
+    <exclude body1="left_linear_rod_link"       body2="right_linear_rod_link"/>
+    <exclude body1="left_wrist_rod_link"        body2="right_wrist_rod_link"/>
+  </contact>
+
+  <actuator>
+    <position name="act_left"  joint="left_linear_rod_link"  kp="3000" kv="120"
+              ctrllimited="true" ctrlrange="-0.008 0.008"/>
+    <position name="act_right" joint="right_linear_rod_link" kp="3000" kv="120"
+              ctrllimited="true" ctrlrange="-0.008 0.008"/>
+  </actuator>
+
+</mujoco>
