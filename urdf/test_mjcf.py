@@ -221,7 +221,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("xml", help="path to dexhand_lh_mjcf.xml")
     parser.add_argument("--no-viewer", action="store_true", help="only load/check, no GUI")
-    parser.add_argument("--seconds", type=float, default=20.0, help="viewer run time")
+    parser.add_argument("--seconds", type=float, default=100, help="viewer run time")
     args = parser.parse_args()
 
     m, d = load_and_report(args.xml)
