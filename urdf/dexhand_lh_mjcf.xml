@@ -428,6 +428,37 @@
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
     <position name="act_right" joint="right_linear_rod_link" kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
+
+    <!-- 拇指 --> 
+    <position name="THJ4" joint="THJ4" ctrllimited="true"  class="thumb_base"/>
+    <position name="THJ3" joint="THJ3" ctrllimited="true" class="thumb_base"/>
+    <position name="THJ2" joint="THJ2" ctrllimited="true" class="thumb_flex"/>
+    <position name="THJ1" joint="THJ1" ctrllimited="true" class="thumb_flex"/>
+
+    <!-- 食指 -->
+    <!-- <position name="FFJ4" joint="FFJ4" ctrllimited="true" class="finger_abd"/> -->
+    <position name="FFJ3" joint="FFJ3" ctrllimited="true" class="finger_flex"/>
+    <position name="FFJ2" joint="FFJ2" ctrllimited="true" class="finger_flex"/>
+    <position name="FFJ1" joint="FFJ1" ctrllimited="true" class="finger_flex"/>
+
+    <!-- 中指 -->
+    <position name="MFJ4" joint="MFJ4" ctrllimited="true" class="finger_abd"/>
+    <position name="MFJ3" joint="MFJ3" ctrllimited="true" class="finger_flex"/>
+    <position name="MFJ2" joint="MFJ2" ctrllimited="true" class="finger_flex"/>
+    <position name="MFJ1" joint="MFJ1" ctrllimited="true" class="finger_flex"/>
+
+    <!-- 无名指 -->
+    <position name="RFJ4" joint="RFJ4" ctrllimited="true" class="finger_abd"/>
+    <position name="RFJ3" joint="RFJ3" ctrllimited="true" class="finger_flex"/>
+    <position name="RFJ2" joint="RFJ2" ctrllimited="true" class="finger_flex"/>
+    <position name="RFJ1" joint="RFJ1" ctrllimited="true" class="finger_flex"/>
+
+    <!-- 小指 -->
+    <position name="LFJ4" joint="LFJ4" ctrllimited="true" class="finger_abd"/>
+    <position name="LFJ3" joint="LFJ3" ctrllimited="true" class="finger_flex"/>
+    <position name="LFJ2" joint="LFJ2" ctrllimited="true" class="finger_flex"/>
+    <position name="LFJ1" joint="LFJ1" ctrllimited="true" class="finger_flex"/>
+
   </actuator>
 
 </mujoco>

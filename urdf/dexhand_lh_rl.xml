@@ -501,7 +501,7 @@
     <position name="act_right" joint="right_linear_rod_link" kp="3000" kv="120"
               ctrllimited="true" ctrlrange="-0.008 0.008"/>
     
-      <!-- 拇指 -->
+      <!-- 拇指 --> 
     <position name="THJ4" joint="THJ4" ctrllimited="true"  class="thumb_base"/>
     <position name="THJ3" joint="THJ3" ctrllimited="true" class="thumb_base"/>
     <position name="THJ2" joint="THJ2" ctrllimited="true" class="thumb_flex"/>
