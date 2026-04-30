@@ -11,12 +11,10 @@ def safe_name(model, objtype, idx):
 
 
 def quat_conj(q):
-    # q = [w, x, y, z]
     return np.array([q[0], -q[1], -q[2], -q[3]], dtype=np.float64)
 
 
 def quat_mul(q1, q2):
-    # Hamilton product, q = [w, x, y, z]
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
     return np.array([
@@ -28,7 +26,6 @@ def quat_mul(q1, q2):
 
 
 def quat_rotate(q, v):
-    # rotate vector v by unit quaternion q
     qv = np.array([0.0, v[0], v[1], v[2]], dtype=np.float64)
     return quat_mul(quat_mul(q, qv), quat_conj(q))[1:]
 
@@ -80,37 +77,23 @@ def analyze_connect(m, d, eq_name):
     p2 = d.xpos[obj2].copy()
     q2 = d.xquat[obj2].copy()
 
-    # 把世界 anchor 反算到两个 body 各自的 local frame
     a1_local = world_to_local(p1, q1, anchor)
     a2_local = world_to_local(p2, q2, anchor)
 
     print(f"anchor in {name1} local = {a1_local}")
     print(f"anchor in {name2} local = {a2_local}")
 
-    # 再正算回世界，检查数值一致性
     a1_world_recon = local_to_world(p1, q1, a1_local)
     a2_world_recon = local_to_world(p2, q2, a2_local)
 
     print(f"reconstructed world from {name1} = {a1_world_recon}")
     print(f"reconstructed world from {name2} = {a2_world_recon}")
 
-    # 关键诊断 1：
-    # 如果 body1/body2 当前真在同一个闭环点上，那么
-    # “body1 上这个 local 点的世界坐标” 和 “body2 上这个 local 点的世界坐标”
-    # 应该和 anchor 对齐，而且二者彼此重合。
-    #
-    # 在当前 qpos 下，这里先计算 body 原点到 anchor 的距离，帮助判断 anchor 是否离 body 很离谱
     d1 = np.linalg.norm(anchor - p1)
     d2 = np.linalg.norm(anchor - p2)
     print(f"|anchor - {name1}_origin| = {d1:.8f} m")
     print(f"|anchor - {name2}_origin| = {d2:.8f} m")
 
-    # 关键诊断 2：
-    # 通过 mj_forward 后，MuJoCo 会根据当前 qpos 给出 body 世界姿态。
-    # connect 想要的是：两个 body 上各自对应的 anchor 点重合。
-    #
-    # 我们把“同一个世界 anchor”映射到两个 body 的 local，再映射回世界，
-    # 如果初始模型几何/层级一致，这两个世界点应该都正好等于 anchor。
     e1 = np.linalg.norm(a1_world_recon - anchor)
     e2 = np.linalg.norm(a2_world_recon - anchor)
     e12 = np.linalg.norm(a1_world_recon - a2_world_recon)
@@ -119,7 +102,6 @@ def analyze_connect(m, d, eq_name):
     print(f"reconstruction err on body2 = {e2:.12e} m")
     print(f"point mismatch body1/body2   = {e12:.12e} m")
 
-    # 再给一个更直观的提示
     print("diagnosis:")
     print("  - 上面三个 reconstruction/mismatch 正常应接近 0（浮点误差量级）")
     print("  - 如果你视觉上仍觉得 connect 没接住，问题通常不是 XML 里没读到 connect，")
@@ -168,48 +150,22 @@ def load_and_report(xml_path):
     print_body_pose(m, d, "left_ear_link")
     print_body_pose(m, d, "right_ear_link")
 
-
-
-
     analyze_connect(m, d, "left_parallel_close")
     analyze_connect(m, d, "right_parallel_close")
 
     return m, d
 
 
-def pick_drive_actuators(model):
-    ids = []
-    for i in range(model.nu):
-        name = safe_name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i).lower()
-        if ("linear" in name) or ("rod" in name):
-            ids.append(i)
-    if len(ids) == 0 and model.nu > 0:
-        ids = list(range(min(2, model.nu)))
-    return ids
-
-
-def run_viewer(m, d, seconds=20.0):
+def run_viewer(m, d, seconds=100.0):
     import mujoco.viewer
 
-    drive_ids = pick_drive_actuators(m)
-    print(f"\nDrive actuators: {drive_ids}")
+    print("\n=== Manual control mode ===")
+    print("不会自动写入 d.ctrl。")
+    print("请在 viewer 里手动拖 actuator control sliders。")
 
     t0 = time.time()
     with mujoco.viewer.launch_passive(m, d) as viewer:
         while viewer.is_running() and (time.time() - t0 < seconds):
-            t = d.time
-
-            if m.nu > 0:
-                d.ctrl[:] = 0.0
-                for k, i in enumerate(drive_ids):
-                    if m.actuator_ctrllimited[i]:
-                        lo, hi = m.actuator_ctrlrange[i]
-                        mid = 0.5 * (lo + hi)
-                        amp = 0.2 * (hi - lo)
-                    else:
-                        mid, amp = 0.0, 0.1
-                    d.ctrl[i] = mid + amp * np.sin(2*np.pi*0.5*t + k*np.pi)
-
             mujoco.mj_step(m, d)
             viewer.sync()
             time.sleep(m.opt.timestep)
@@ -226,7 +182,7 @@ def main():
 
     m, d = load_and_report(args.xml)
     if not args.no_viewer:
-        run_viewer(m, d, seconds=args.seconds)
+        run_viewer(m, d, seconds=300)
 
 
 if __name__ == "__main__":
