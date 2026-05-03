@@ -508,7 +508,7 @@
     <position name="THJ1" joint="THJ1" ctrllimited="true" class="thumb_flex"/>
 
     <!-- 食指 -->
-    <!-- <position name="FFJ4" joint="FFJ4" ctrllimited="true" class="finger_abd"/> -->
+    <position name="FFJ4" joint="FFJ4" ctrllimited="true" class="finger_abd"/>
     <position name="FFJ3" joint="FFJ3" ctrllimited="true" class="finger_flex"/>
     <position name="FFJ2" joint="FFJ2" ctrllimited="true" class="finger_flex"/>
     <position name="FFJ1" joint="FFJ1" ctrllimited="true" class="finger_flex"/>
