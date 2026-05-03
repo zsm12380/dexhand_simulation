@@ -120,43 +120,43 @@
         
         <!-- palm contact sites/geoms for grasp reward -->
 
-        <geom name="palm_contact_center"
+        <!-- <geom name="palm_contact_center"
               type="sphere"
-              pos="-0.0138 0.0000 0.078"
+              pos="0.02 0.0000 0.078"
               size="0.004"
               rgba="0 1 0 0.3"
               contype="1"
-              conaffinity="1"/>
+              conaffinity="1"/> -->
 
         <geom name="palm_contact_ff"
               type="sphere"
-              pos="-0.0138 -0.022 0.082"
+              pos="0.0035 -0.034 0.096"
               size="0.004"
-              rgba="0 1 0 0.3"
+              rgba="0 1 0 1"
               contype="1"
               conaffinity="1"/>
 
         <geom name="palm_contact_mf"
               type="sphere"
-              pos="-0.0138 -0.007 0.088"
+              pos="0.0036 -0.0115 0.1045"
               size="0.004"
-              rgba="0 1 0 0.3"
+              rgba="0 1 0 1"
               contype="1"
               conaffinity="1"/>
 
         <geom name="palm_contact_rf"
               type="sphere"
-              pos="-0.0138 0.007 0.082"
+              pos="0.0030 0.0115 0.096"
               size="0.004"
-              rgba="0 1 0 0.3"
+              rgba="0 1 0 1"
               contype="1"
               conaffinity="1"/>
 
         <geom name="palm_contact_lf"
               type="sphere"
-              pos="-0.0138 0.022 0.078"
+              pos="0.0018 0.0348 0.089"
               size="0.004"
-              rgba="0 1 0 0.3"
+              rgba="0 1 0 1"
               contype="1"
               conaffinity="1"/>
 
