@@ -104,11 +104,12 @@ class DexHandGraspEnv(gym.Env):
         # ------------------------------------------------
         self.nu = self.model.nu
 
-        # ===== 锁定无名指/小指 actuator =====
+        # ===== 锁定无名指/小指 actuator 到 0 =====
         self.act_name_to_id = {}
         for i in range(self.model.nu):
             name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
-            self.act_name_to_id[name] = i
+            if name is not None:
+                self.act_name_to_id[name] = i
 
         self.locked_act_names = [
             "RFJ4", "RFJ3", "RFJ2", "RFJ1",
@@ -120,8 +121,11 @@ class DexHandGraspEnv(gym.Env):
             if n in self.act_name_to_id:
                 aid = self.act_name_to_id[n]
                 lo, hi = self.model.actuator_ctrlrange[aid]
-                # 先固定在中值
-                self.locked_act_target[aid] = 0.5 * (lo + hi)
+
+                # 固定到 0；若 0 不在范围内则夹到范围边界
+                target = np.clip(0.0, lo, hi)
+                self.locked_act_target[aid] = float(target)
+
 
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(self.nu,), dtype=np.float32
