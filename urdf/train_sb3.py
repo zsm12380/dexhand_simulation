@@ -5,7 +5,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_checker import check_env
 
-from dexhand_env_named import DexHandGraspEnv
+from dexhand_env import DexHandGraspEnv
 
 
 def make_env():
@@ -44,7 +44,7 @@ def main():
     eval_env = make_env()
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=20000,
+        save_freq=10000,
         save_path="./checkpoints/",
         name_prefix="dexhand_tripod_named_sac"
     )
@@ -76,10 +76,10 @@ def main():
     )
 
     model.learn(
-        total_timesteps=500000,
+        total_timesteps=800000,
         callback=[checkpoint_callback, eval_callback],
         log_interval=10,
-        progress_bar=True,
+        progress_bar=False,
     )
 
     model.save("dexhand_tripod_named_sac_final")

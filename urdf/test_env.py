@@ -1,4 +1,4 @@
-from dexhand_env_named import DexHandGraspEnv
+from dexhand_env import DexHandGraspEnv
 
 
 def main():

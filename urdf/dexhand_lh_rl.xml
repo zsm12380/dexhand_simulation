@@ -50,6 +50,8 @@
     <mesh name="right_virtual_link_A1_link" content_type="model/stl" file="right_virtual_link_A1_link.STL"/>
     <mesh name="right_virtual_link_A2_link" content_type="model/stl" file="right_virtual_link_A2_link.STL"/>
     <mesh name="right_virtual_link_A3_link" content_type="model/stl" file="right_virtual_link_A3_link.STL"/>
+    <!-- 物体文件 -->
+    <mesh name="object" content_type="model/stl" file="object.STL"/>
   </asset>
 
   <default>
@@ -106,6 +108,19 @@
 
 
   <worldbody>
+    <!-- 物体定义在这里，放在手的前方，稍微偏右一些 -->
+    <body name="object" pos="0.07 0.03 0.33">
+    <freejoint/>
+    <geom name="object_geom"
+          type="mesh"
+          mesh="object"
+          quat="0.7071 0 0 0.7071"
+          mass="0.05"
+          rgba="1 0 0 1"
+          contype="1"
+          conaffinity="1"/>
+    </body>
+
     <geom type="mesh" mesh="base_link" contype="0" conaffinity="0"/>
     <body name="hooke_joint_link" pos="0 0.017433 0.21">
       <inertial pos="1.16913e-09 -6.63471e-09 4.47655e-11" quat="0 0.707107 0 0.707107" mass="0.00243603" diaginertia="2.15582e-07 2.11795e-07 1.1748e-07"/>

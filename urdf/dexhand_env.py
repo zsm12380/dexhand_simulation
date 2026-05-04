@@ -27,7 +27,7 @@ class DexHandGraspEnv(gym.Env):
         frame_skip: int = 5,
         max_steps: int = 200,
         action_type: str = "delta",   # "absolute" or "delta"
-        delta_scale: float = 0.03,
+        delta_scale: float = 0.005,
     ):
         super().__init__()
 
@@ -103,6 +103,26 @@ class DexHandGraspEnv(gym.Env):
         # action / obs
         # ------------------------------------------------
         self.nu = self.model.nu
+
+        # ===== 锁定无名指/小指 actuator =====
+        self.act_name_to_id = {}
+        for i in range(self.model.nu):
+            name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
+            self.act_name_to_id[name] = i
+
+        self.locked_act_names = [
+            "RFJ4", "RFJ3", "RFJ2", "RFJ1",
+            "LFJ4", "LFJ3", "LFJ2", "LFJ1",
+        ]
+
+        self.locked_act_target = {}
+        for n in self.locked_act_names:
+            if n in self.act_name_to_id:
+                aid = self.act_name_to_id[n]
+                lo, hi = self.model.actuator_ctrlrange[aid]
+                # 先固定在中值
+                self.locked_act_target[aid] = 0.5 * (lo + hi)
+
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(self.nu,), dtype=np.float32
         )
@@ -112,6 +132,8 @@ class DexHandGraspEnv(gym.Env):
 
         self.prev_palm_obj_dist = None
         self.prev_tripod_mean_dist = None
+
+        self.contact_hold_steps = 0
 
         obs = self._reset_sim_and_get_obs()
 
@@ -161,6 +183,8 @@ class DexHandGraspEnv(gym.Env):
     # =====================================================
     def _reset_sim_and_get_obs(self):
         mujoco.mj_resetData(self.model, self.data)
+
+        self.contact_hold_steps = 0
 
         self.step_count = 0
         self.prev_action[:] = 0.0
@@ -224,7 +248,9 @@ class DexHandGraspEnv(gym.Env):
         ff_pos = self._get_site_pos("ff_tip_site")
         mf_pos = self._get_site_pos("mf_tip_site")
 
-        # 1) 手掌接近物体
+        # --------------------------------------------------
+        # 1) palm 接近奖励
+        # --------------------------------------------------
         palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
         r_approach_palm_dense = np.exp(-4.0 * palm_obj_dist)
 
@@ -232,7 +258,9 @@ class DexHandGraspEnv(gym.Env):
         if self.prev_palm_obj_dist is not None:
             r_approach_palm_progress = 5.0 * (self.prev_palm_obj_dist - palm_obj_dist)
 
-        # 2) tripod 三指接近物体
+        # --------------------------------------------------
+        # 2) tripod 三指接近奖励
+        # --------------------------------------------------
         tripod_dists = np.array([
             np.linalg.norm(th_pos - obj_pos),
             np.linalg.norm(ff_pos - obj_pos),
@@ -248,12 +276,17 @@ class DexHandGraspEnv(gym.Env):
                 self.prev_tripod_mean_dist - tripod_mean_dist
             )
 
-        # 3) tripod 几何结构
+        # --------------------------------------------------
+        # 3) tripod 几何结构奖励
+        # 注意：当前阶段弱化它，不要让它卡 success
+        # --------------------------------------------------
         r_tripod_shape = self._compute_tripod_shape_reward(
             th_pos, ff_pos, mf_pos, obj_pos
         )
 
+        # --------------------------------------------------
         # 4) 真实接触奖励
+        # --------------------------------------------------
         th_c, ff_c, mf_c = self._get_tripod_contacts()
         contact_sum = th_c + ff_c + mf_c
 
@@ -271,36 +304,85 @@ class DexHandGraspEnv(gym.Env):
         if contact_sum == 3:
             r_contact_combo += 4.0
 
-        # 5) 控制代价
+        # --------------------------------------------------
+        # 5) 接触保持奖励（新加）
+        # 鼓励碰到之后继续保持，而不是跑飞
+        # --------------------------------------------------
+        r_contact_hold = 0.0
+        if contact_sum >= 2:
+            r_contact_hold += 3.0
+        if contact_sum == 3:
+            r_contact_hold += 5.0
+
+        # 连续接触计数
+        if contact_sum >= 2:
+            self.contact_hold_steps += 1
+        else:
+            self.contact_hold_steps = 0
+
+        # --------------------------------------------------
+        # 6) 逃逸惩罚（新加）
+        # 接触后又离得很远，说明策略把物体/自己甩飞了
+        # --------------------------------------------------
+        r_escape_penalty = 0.0
+        if contact_sum == 0 and tripod_mean_dist > 0.15:
+            r_escape_penalty = -2.0
+        if contact_sum == 0 and tripod_mean_dist > 0.30:
+            r_escape_penalty += -2.0
+
+        # --------------------------------------------------
+        # 7) 动作惩罚
+        # 接触建立后加大惩罚，鼓励柔和保持
+        # --------------------------------------------------
         r_ctrl_penalty = -0.005 * np.sum(np.square(action))
         r_smooth_penalty = -0.01 * np.sum(np.square(action - self.prev_action))
 
-        # 6) 物体稳定项，避免直接打飞
+        if contact_sum >= 2:
+            r_ctrl_penalty *= 3.0
+            r_smooth_penalty *= 3.0
+
+        # --------------------------------------------------
+        # 8) 物体稳定项
+        # --------------------------------------------------
         obj_linvel, obj_angvel = self._get_object_velocity()
         r_obj_stability = -0.01 * np.linalg.norm(obj_linvel) - 0.005 * np.linalg.norm(obj_angvel)
 
+        # --------------------------------------------------
+        # 9) 总奖励
+        # 当前阶段降低 tripod_shape 比重
+        # --------------------------------------------------
         reward = (
             1.0 * r_approach_palm_dense +
             1.5 * r_approach_palm_progress +
             2.0 * r_approach_tripod_dense +
             2.0 * r_approach_tripod_progress +
-            2.0 * r_tripod_shape +
+            0.5 * r_tripod_shape +     # 原来可更大，这里先减弱
             r_contact_count +
             r_contact_pair +
             r_contact_combo +
+            r_contact_hold +
+            r_escape_penalty +
             r_ctrl_penalty +
             r_smooth_penalty +
             r_obj_stability
         )
 
+        # --------------------------------------------------
+        # 10) success 判定（放宽）
+        # 第一阶段只要求：至少两指接触 + 距离够近
+        # --------------------------------------------------
         success = (
             contact_sum >= 2 and
-            tripod_mean_dist < 0.05 and
-            r_tripod_shape > 0.55
+            tripod_mean_dist < 0.07
         )
 
+        # 如果连续保持若干步，给较大奖励
+        if self.contact_hold_steps >= 5:
+            reward += 20.0
+
+        # 一般 success bonus
         if success:
-            reward += 10.0
+            reward += 5.0
 
         self.prev_palm_obj_dist = palm_obj_dist
         self.prev_tripod_mean_dist = tripod_mean_dist
@@ -315,6 +397,7 @@ class DexHandGraspEnv(gym.Env):
             "ff_contact": int(ff_c),
             "mf_contact": int(mf_c),
             "contact_sum": int(contact_sum),
+            "contact_hold_steps": int(self.contact_hold_steps),
             "success": bool(success),
         }
 
@@ -410,29 +493,42 @@ class DexHandGraspEnv(gym.Env):
         if self.action_type == "absolute":
             ctrl = np.zeros(self.nu, dtype=np.float32)
             for i in range(self.nu):
-                low, high = self.model.actuator_ctrlrange[i]
-                ctrl[i] = low + (action[i] + 1.0) * 0.5 * (high - low)
+                lo, hi = self.model.actuator_ctrlrange[i]
+                ctrl[i] = lo + (action[i] + 1.0) * 0.5 * (hi - lo)
 
         elif self.action_type == "delta":
             ctrl = self.prev_ctrl.copy()
             for i in range(self.nu):
-                low, high = self.model.actuator_ctrlrange[i]
-                delta = self.delta_scale * action[i] * (high - low)
-                ctrl[i] = np.clip(ctrl[i] + delta, low, high)
+                lo, hi = self.model.actuator_ctrlrange[i]
+                delta = self.delta_scale * action[i] * (hi - lo)
+                ctrl[i] = np.clip(ctrl[i] + delta, lo, hi)
         else:
             raise ValueError(f"未知 action_type: {self.action_type}")
 
+        # >>> 新增：锁定无名指/小指 actuator
+        for aid, target in self.locked_act_target.items():
+            ctrl[aid] = target
+
         self.prev_ctrl = ctrl.copy()
         return ctrl
+
 
     # =====================================================
     # Termination
     # =====================================================
     def _check_terminated(self):
         obj_pos = self._get_object_pos()
+
+        # 物体飞走
         if np.linalg.norm(obj_pos) > 5.0:
             return True
+
+        # 已经稳定保持接触若干步，认为当前阶段成功
+        if self.contact_hold_steps >= 5:
+            return True
+
         return False
+
 
     # =====================================================
     # Object randomization
