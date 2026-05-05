@@ -60,12 +60,11 @@ def main():
             # 打印调试信息
             print(
                 f"[ep={episode_id:02d} step={step_id:03d}] "
-                f"reward={reward:8.4f} | "
-                f"contact_sum={info['contact_sum']} | "
-                f"hold_steps={info.get('contact_hold_steps', 0)} | "
-                f"tripod_mean_dist={info['tripod_mean_dist']:.4f} | "
-                f"shape={info['r_tripod_shape']:.4f} | "
-                f"success={info['success']}"
+                f"phase={info.get('phase', -1)} | "
+                f"contact_sum={info.get('contact_sum', -1)} | "
+                f"freeze_steps={info.get('freeze_steps', -1)} | "
+                f"tripod_mean_dist={info.get('tripod_mean_dist', -1):.4f} | "
+                f"success={info.get('success', False)}"
             )
 
             step_id += 1

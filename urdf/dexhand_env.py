@@ -64,22 +64,36 @@ class DexHandGraspEnv(gym.Env):
         # ------------------------------------------------
         # 三个关键指尖 geom
         # ------------------------------------------------
-        self.thumb_gid = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_GEOM, thumb_geom_name
-        )
-        self.index_gid = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_GEOM, index_geom_name
-        )
-        self.middle_gid = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_GEOM, middle_geom_name
-        )
+        # ------------------------------------------------
+        # 三个关键手指的“接触组geom”
+        # 每根手指 = distal本体(J1) + tip patch(J0)
+        # ------------------------------------------------
+        self.thumb_geom_names = ["th_distal_geom", "th_tip_geom"]
+        self.index_geom_names = ["ff_distal_geom", "ff_tip_geom"]
+        self.middle_geom_names = ["mf_distal_geom", "mf_tip_geom"]
 
-        if self.thumb_gid < 0:
-            raise ValueError(f"找不到 thumb geom: {thumb_geom_name}")
-        if self.index_gid < 0:
-            raise ValueError(f"找不到 index geom: {index_geom_name}")
-        if self.middle_gid < 0:
-            raise ValueError(f"找不到 middle geom: {middle_geom_name}")
+        self.thumb_gids = []
+        self.index_gids = []
+        self.middle_gids = []
+
+        for name in self.thumb_geom_names:
+            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
+            if gid < 0:
+                raise ValueError(f"找不到 thumb geom: {name}")
+            self.thumb_gids.append(gid)
+
+        for name in self.index_geom_names:
+            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
+            if gid < 0:
+                raise ValueError(f"找不到 index geom: {name}")
+            self.index_gids.append(gid)
+
+        for name in self.middle_geom_names:
+            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
+            if gid < 0:
+                raise ValueError(f"找不到 middle geom: {name}")
+            self.middle_gids.append(gid)
+
 
         # ------------------------------------------------
         # 关键 site
@@ -126,19 +140,44 @@ class DexHandGraspEnv(gym.Env):
                 target = np.clip(0.0, lo, hi)
                 self.locked_act_target[aid] = float(target)
 
+        # 记录最近contact
+        self.last_contact_sum = 0
 
+        # ===== 四阶段状态机 =====
+        # 1: approach
+        # 2: contact
+        # 3: stabilize_soft
+        # 4: freeze_hold
+        self.phase = 1
+
+        # 连续接触计数
+        self.contact_streak = 0
+        self.loss_streak = 0
+
+        # soft stabilize 阶段的计数
+        self.stabilize_steps = 0
+        self.max_stabilize_steps = 6   # 接触后先微调几步
+
+        # freeze hold 阶段
+        self.freeze_ctrl = None
+        self.freeze_steps = 0
+        self.max_freeze_steps = 12
+
+        # 成功标志
+        self.success_hold = False
+        # ===== action space =====
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(self.nu,), dtype=np.float32
         )
 
+        # ===== 历史状态 =====
         self.prev_action = np.zeros(self.nu, dtype=np.float32)
         self.prev_ctrl = np.zeros(self.nu, dtype=np.float32)
 
         self.prev_palm_obj_dist = None
         self.prev_tripod_mean_dist = None
 
-        self.contact_hold_steps = 0
-
+        # ===== 先 reset 一次，构建 observation_space =====
         obs = self._reset_sim_and_get_obs()
 
         self.observation_space = spaces.Box(
@@ -147,6 +186,10 @@ class DexHandGraspEnv(gym.Env):
             shape=obs.shape,
             dtype=np.float32,
         )
+
+        print("[DexHandGraspEnv] action_space:", self.action_space)
+        print("[DexHandGraspEnv] observation_space:", self.observation_space)
+
 
     # =====================================================
     # Gym API
@@ -188,7 +231,17 @@ class DexHandGraspEnv(gym.Env):
     def _reset_sim_and_get_obs(self):
         mujoco.mj_resetData(self.model, self.data)
 
-        self.contact_hold_steps = 0
+        self.last_contact_sum = 0
+
+        self.phase = 1
+        self.contact_streak = 0
+        self.loss_streak = 0
+
+        self.stabilize_steps = 0
+        self.freeze_ctrl = None
+        self.freeze_steps = 0
+        self.success_hold = False
+
 
         self.step_count = 0
         self.prev_action[:] = 0.0
@@ -206,6 +259,11 @@ class DexHandGraspEnv(gym.Env):
 
         self.prev_palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
         self.prev_tripod_mean_dist = np.mean(tripod_dists)
+
+        obj_linvel, obj_angvel = self._get_object_velocity()
+        self.prev_obj_speed = float(np.linalg.norm(obj_linvel))
+        self.best_contact_sum = 0
+        self.best_contact_streak = 0
 
         return self._get_obs()
 
@@ -252,160 +310,279 @@ class DexHandGraspEnv(gym.Env):
         ff_pos = self._get_site_pos("ff_tip_site")
         mf_pos = self._get_site_pos("mf_tip_site")
 
-        # --------------------------------------------------
-        # 1) palm 接近奖励
-        # --------------------------------------------------
+        # ---------- 几何 ----------
         palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
-        r_approach_palm_dense = np.exp(-4.0 * palm_obj_dist)
 
-        r_approach_palm_progress = 0.0
-        if self.prev_palm_obj_dist is not None:
-            r_approach_palm_progress = 5.0 * (self.prev_palm_obj_dist - palm_obj_dist)
-
-        # --------------------------------------------------
-        # 2) tripod 三指接近奖励
-        # --------------------------------------------------
         tripod_dists = np.array([
             np.linalg.norm(th_pos - obj_pos),
             np.linalg.norm(ff_pos - obj_pos),
             np.linalg.norm(mf_pos - obj_pos),
         ], dtype=np.float32)
-
         tripod_mean_dist = float(np.mean(tripod_dists))
-        r_approach_tripod_dense = np.exp(-5.0 * tripod_mean_dist)
 
-        r_approach_tripod_progress = 0.0
+        # dense proximity
+        r_palm_dense = np.exp(-4.0 * palm_obj_dist)
+        r_tripod_dense = np.exp(-10.0 * tripod_mean_dist)
+
+        # progress
+        palm_progress = 0.0
+        if self.prev_palm_obj_dist is not None:
+            palm_progress = self.prev_palm_obj_dist - palm_obj_dist
+
+        tripod_progress = 0.0
         if self.prev_tripod_mean_dist is not None:
-            r_approach_tripod_progress = 8.0 * (
-                self.prev_tripod_mean_dist - tripod_mean_dist
-            )
+            tripod_progress = self.prev_tripod_mean_dist - tripod_mean_dist
 
-        # --------------------------------------------------
-        # 3) tripod 几何结构奖励
-        # 注意：当前阶段弱化它，不要让它卡 success
-        # --------------------------------------------------
-        r_tripod_shape = self._compute_tripod_shape_reward(
-            th_pos, ff_pos, mf_pos, obj_pos
-        )
+        # 远离惩罚（只罚变远）
+        dist_apart = 0.0
+        if self.prev_tripod_mean_dist is not None:
+            dist_apart = max(tripod_mean_dist - self.prev_tripod_mean_dist, 0.0)
 
-        # --------------------------------------------------
-        # 4) 真实接触奖励
-        # --------------------------------------------------
+        r_tripod_shape = self._compute_tripod_shape_reward(th_pos, ff_pos, mf_pos, obj_pos)
+
+        # ---------- 接触 ----------
         th_c, ff_c, mf_c = self._get_tripod_contacts()
         contact_sum = th_c + ff_c + mf_c
+        self.last_contact_sum = contact_sum
 
-        r_contact_count = 1.5 * contact_sum
-
-        r_contact_pair = 0.0
-        if th_c and ff_c:
-            r_contact_pair += 2.0
-        if th_c and mf_c:
-            r_contact_pair += 2.0
-
-        r_contact_combo = 0.0
-        if contact_sum >= 2:
-            r_contact_combo += 2.0
-        if contact_sum == 3:
-            r_contact_combo += 4.0
-
-        # --------------------------------------------------
-        # 5) 接触保持奖励（新加）
-        # 鼓励碰到之后继续保持，而不是跑飞
-        # --------------------------------------------------
-        r_contact_hold = 0.0
-        if contact_sum >= 2:
-            r_contact_hold += 3.0
-        if contact_sum == 3:
-            r_contact_hold += 5.0
-
-        # 连续接触计数
-        if contact_sum >= 2:
-            self.contact_hold_steps += 1
-        else:
-            self.contact_hold_steps = 0
-
-        # --------------------------------------------------
-        # 6) 逃逸惩罚（新加）
-        # 接触后又离得很远，说明策略把物体/自己甩飞了
-        # --------------------------------------------------
-        r_escape_penalty = 0.0
-        if contact_sum == 0 and tripod_mean_dist > 0.15:
-            r_escape_penalty = -2.0
-        if contact_sum == 0 and tripod_mean_dist > 0.30:
-            r_escape_penalty += -2.0
-
-        # --------------------------------------------------
-        # 7) 动作惩罚
-        # 接触建立后加大惩罚，鼓励柔和保持
-        # --------------------------------------------------
-        r_ctrl_penalty = -0.005 * np.sum(np.square(action))
-        r_smooth_penalty = -0.01 * np.sum(np.square(action - self.prev_action))
-
-        if contact_sum >= 2:
-            r_ctrl_penalty *= 3.0
-            r_smooth_penalty *= 3.0
-
-        # --------------------------------------------------
-        # 8) 物体稳定项
-        # --------------------------------------------------
+        # ---------- 物体速度 ----------
         obj_linvel, obj_angvel = self._get_object_velocity()
-        r_obj_stability = -0.01 * np.linalg.norm(obj_linvel) - 0.005 * np.linalg.norm(obj_angvel)
+        obj_speed = float(np.linalg.norm(obj_linvel))
+        obj_ang_speed = float(np.linalg.norm(obj_angvel))
 
-        # --------------------------------------------------
-        # 9) 总奖励
-        # 当前阶段降低 tripod_shape 比重
-        # --------------------------------------------------
-        reward = (
-            1.0 * r_approach_palm_dense +
-            1.5 * r_approach_palm_progress +
-            2.0 * r_approach_tripod_dense +
-            2.0 * r_approach_tripod_progress +
-            0.5 * r_tripod_shape +     # 原来可更大，这里先减弱
-            r_contact_count +
-            r_contact_pair +
-            r_contact_combo +
-            r_contact_hold +
-            r_escape_penalty +
-            r_ctrl_penalty +
-            r_smooth_penalty +
-            r_obj_stability
-        )
+        speed_increase = 0.0
+        if hasattr(self, "prev_obj_speed") and self.prev_obj_speed is not None:
+            speed_increase = max(obj_speed - self.prev_obj_speed, 0.0)
 
-        # --------------------------------------------------
-        # 10) success 判定（放宽）
-        # 第一阶段只要求：至少两指接触 + 距离够近
-        # --------------------------------------------------
-        success = (
+        # ---------- streak 更新 ----------
+        if contact_sum >= 2:
+            self.contact_streak += 1
+            self.loss_streak = 0
+        else:
+            self.contact_streak = 0
+            self.loss_streak += 1
+
+        self.best_contact_sum = max(self.best_contact_sum, contact_sum)
+        self.best_contact_streak = max(self.best_contact_streak, self.contact_streak)
+
+        prev_phase = self.phase
+
+        # ---------- Phase 转移 ----------
+        if self.phase == 1 and contact_sum >= 1:
+            self.phase = 2
+
+        if (
+            self.phase == 2 and
+            self.contact_streak >= 2 and
             contact_sum >= 2 and
-            tripod_mean_dist < 0.07
+            obj_speed < 0.20
+        ):
+            self.phase = 3
+            self.stabilize_steps = 0
+
+        if self.phase == 3:
+            self.stabilize_steps += 1
+
+            if (
+                contact_sum >= 2 and
+                obj_speed < 0.03 and
+                obj_ang_speed < 0.30 and
+                self.stabilize_steps >= self.max_stabilize_steps
+            ):
+                self.phase = 4
+                self.freeze_ctrl = self.data.ctrl.copy()
+                self.freeze_steps = 0
+
+        if self.phase == 4:
+            self.freeze_steps += 1
+
+        if self.phase != prev_phase:
+            print(
+                f"[PHASE TRANSITION] step={self.step_count}, "
+                f"{prev_phase} -> {self.phase}, "
+                f"contact_sum={contact_sum}, "
+                f"tripod_mean_dist={tripod_mean_dist:.4f}, "
+                f"obj_speed={obj_speed:.4f}"
+            )
+
+        # ---------- 通用惩罚 ----------
+        r_ctrl_penalty = -0.0015 * np.sum(np.square(action))
+        r_smooth_penalty = -0.0030 * np.sum(np.square(action - self.prev_action))
+
+        # 接触时物体速度大，要明显惩罚
+        # 未接触时不要太重，否则接近过程被压死
+        if contact_sum > 0:
+            r_obj_speed = -1.2 * obj_speed - 0.15 * obj_ang_speed
+        else:
+            r_obj_speed = -0.15 * obj_speed - 0.02 * obj_ang_speed
+
+        # 速度突然上涨，也要罚
+        r_speed_burst = -0.6 * speed_increase
+
+        reward = 0.0
+
+        # ==================================================
+        # Phase 1: approach
+        # ==================================================
+        if self.phase == 1:
+            r_contact_bonus = 0.8 if contact_sum >= 1 else 0.0
+
+            reward = (
+                1.0 * r_palm_dense +
+                2.0 * r_tripod_dense +
+                6.0 * palm_progress +
+                10.0 * tripod_progress +
+                0.4 * r_tripod_shape +
+                r_contact_bonus +
+                r_ctrl_penalty +
+                r_smooth_penalty
+            )
+
+        # ==================================================
+        # Phase 2: make and keep contact
+        # ==================================================
+        elif self.phase == 2:
+            r_contact_count = 1.2 * contact_sum
+            r_multi_contact = 2.0 if contact_sum >= 2 else 0.0
+            r_tripod_full = 3.0 if contact_sum == 3 else 0.0
+
+            # 持续接触奖励：鼓励别一碰就掉
+            r_persist = 0.8 * min(self.contact_streak, 5)
+
+            # 接触后还继续靠近/包裹
+            r_close_keep = 2.0 * np.exp(-12.0 * tripod_mean_dist)
+
+            # 继续变近奖励
+            r_progress_keep = 8.0 * max(tripod_progress, 0.0)
+
+            # 一旦开始远离，重罚
+            r_apart = -10.0 * dist_apart
+
+            # 丢接触惩罚，连续掉越久越重
+            r_drop = -0.8 * min(self.loss_streak, 6) if contact_sum == 0 else 0.0
+
+            # 如果接触很少但速度很大，说明在推
+            r_push_penalty = 0.0
+            if contact_sum <= 1:
+                r_push_penalty = -0.8 * obj_speed
+
+            reward = (
+                r_contact_count +
+                r_multi_contact +
+                r_tripod_full +
+                r_persist +
+                r_close_keep +
+                r_progress_keep +
+                0.3 * r_tripod_shape +
+                r_apart +
+                r_drop +
+                r_push_penalty +
+                r_obj_speed +
+                r_speed_burst +
+                1.5 * r_ctrl_penalty +
+                1.5 * r_smooth_penalty
+            )
+
+        # ==================================================
+        # Phase 3: stabilize
+        # ==================================================
+        elif self.phase == 3:
+            r_hold = 4.0 if contact_sum >= 2 else 0.0
+            r_hold += 2.0 if contact_sum == 3 else 0.0
+
+            r_stable_close = 2.5 * np.exp(-15.0 * tripod_mean_dist)
+            r_low_speed = -1.8 * obj_speed - 0.25 * obj_ang_speed
+            r_apart = -8.0 * dist_apart
+
+            # phase3 掉了接触，重罚
+            if contact_sum == 0:
+                r_drop = -6.0
+            elif contact_sum == 1:
+                r_drop = -2.0
+            else:
+                r_drop = 0.0
+
+            # 每稳定一步给一点奖励
+            r_stabilize_progress = 0.8
+
+            reward = (
+                r_hold +
+                r_stable_close +
+                r_low_speed +
+                r_apart +
+                r_drop +
+                r_stabilize_progress +
+                r_speed_burst +
+                1.5 * r_ctrl_penalty +
+                1.5 * r_smooth_penalty
+            )
+
+        # ==================================================
+        # Phase 4: freeze hold
+        # ==================================================
+        else:
+            r_hold = 8.0 if contact_sum >= 2 else 0.0
+            r_hold += 3.0 if contact_sum == 3 else 0.0
+
+            r_low_speed = -1.5 * obj_speed - 0.2 * obj_ang_speed
+
+            if contact_sum == 0:
+                r_drop = -8.0
+            elif contact_sum == 1:
+                r_drop = -3.0
+            else:
+                r_drop = 0.0
+
+            r_freeze_bonus = 1.2
+
+            reward = (
+                r_hold +
+                r_low_speed +
+                r_drop +
+                r_freeze_bonus
+            )
+
+        # ---------- success ----------
+        success = (
+            self.phase == 4 and
+            self.freeze_steps >= self.max_freeze_steps and
+            contact_sum >= 2
         )
 
-        # 如果连续保持若干步，给较大奖励
-        if self.contact_hold_steps >= 5:
-            reward += 20.0
-
-        # 一般 success bonus
         if success:
-            reward += 5.0
+            reward += 100.0
+            self.success_hold = True
 
+        # ---------- update history ----------
         self.prev_palm_obj_dist = palm_obj_dist
         self.prev_tripod_mean_dist = tripod_mean_dist
+        self.prev_obj_speed = obj_speed
         self.prev_action = action.copy()
 
         info = {
             "reward_total": float(reward),
+            "phase": int(self.phase),
+            "stabilize_steps": int(self.stabilize_steps),
+            "freeze_steps": int(self.freeze_steps),
             "palm_obj_dist": float(palm_obj_dist),
             "tripod_mean_dist": float(tripod_mean_dist),
             "r_tripod_shape": float(r_tripod_shape),
+            "obj_speed": float(obj_speed),
+            "obj_ang_speed": float(obj_ang_speed),
             "th_contact": int(th_c),
             "ff_contact": int(ff_c),
             "mf_contact": int(mf_c),
             "contact_sum": int(contact_sum),
-            "contact_hold_steps": int(self.contact_hold_steps),
+            "contact_streak": int(self.contact_streak),
+            "loss_streak": int(self.loss_streak),
+            "best_contact_sum": int(self.best_contact_sum),
+            "best_contact_streak": int(self.best_contact_streak),
             "success": bool(success),
         }
-
         return float(reward), info
+
+
+
 
     # =====================================================
     # Contact
@@ -418,11 +595,24 @@ class DexHandGraspEnv(gym.Env):
                 return 1
         return 0
 
+    def _geom_group_in_contact(self, geom_ids, object_gid):
+        for i in range(self.data.ncon):
+            c = self.data.contact[i]
+            g1, g2 = c.geom1, c.geom2
+
+            if g1 == object_gid and g2 in geom_ids:
+                return 1
+            if g2 == object_gid and g1 in geom_ids:
+                return 1
+        return 0
+    
     def _get_tripod_contacts(self):
-        th_c = self._geom_pair_in_contact(self.thumb_gid, self.object_gid)
-        ff_c = self._geom_pair_in_contact(self.index_gid, self.object_gid)
-        mf_c = self._geom_pair_in_contact(self.middle_gid, self.object_gid)
+        th_c = self._geom_group_in_contact(self.thumb_gids, self.object_gid)
+        ff_c = self._geom_group_in_contact(self.index_gids, self.object_gid)
+        mf_c = self._geom_group_in_contact(self.middle_gids, self.object_gid)
         return th_c, ff_c, mf_c
+
+
 
     # =====================================================
     # Geometry helpers
@@ -494,6 +684,17 @@ class DexHandGraspEnv(gym.Env):
         return ctrl
 
     def _action_to_ctrl(self, action):
+        # Phase 4: 完全冻结
+        if self.phase == 4 and self.freeze_ctrl is not None:
+            ctrl = self.freeze_ctrl.copy()
+
+            for aid, target in self.locked_act_target.items():
+                ctrl[aid] = target
+
+            self.prev_ctrl = ctrl.copy()
+            return ctrl
+
+        # 非冻结阶段
         if self.action_type == "absolute":
             ctrl = np.zeros(self.nu, dtype=np.float32)
             for i in range(self.nu):
@@ -502,19 +703,33 @@ class DexHandGraspEnv(gym.Env):
 
         elif self.action_type == "delta":
             ctrl = self.prev_ctrl.copy()
+
+            # 分阶段控制尺度
+            if self.phase == 1:
+                effective_scale = 0.001         # 例如 0.005
+            elif self.phase == 2:
+                effective_scale = 0.0003                    # 接触阶段更柔和
+            elif self.phase == 3:
+                effective_scale = 0.0001                    # 稳定微调阶段极小
+            else:
+                effective_scale = 0.0
+
             for i in range(self.nu):
                 lo, hi = self.model.actuator_ctrlrange[i]
-                delta = self.delta_scale * action[i] * (hi - lo)
+                delta = effective_scale * action[i] * (hi - lo)
                 ctrl[i] = np.clip(ctrl[i] + delta, lo, hi)
+
         else:
             raise ValueError(f"未知 action_type: {self.action_type}")
 
-        # >>> 新增：锁定无名指/小指 actuator
+        # 锁 RF/LF 到 0
         for aid, target in self.locked_act_target.items():
             ctrl[aid] = target
 
         self.prev_ctrl = ctrl.copy()
         return ctrl
+
+
 
 
     # =====================================================
@@ -523,15 +738,30 @@ class DexHandGraspEnv(gym.Env):
     def _check_terminated(self):
         obj_pos = self._get_object_pos()
 
-        # 物体飞走
+        # 物体飞太远
         if np.linalg.norm(obj_pos) > 5.0:
             return True
 
-        # 已经稳定保持接触若干步，认为当前阶段成功
-        if self.contact_hold_steps >= 5:
+        # phase2: 已经进入接触阶段，但连续丢失太久，直接结束
+        if self.phase == 2 and self.loss_streak >= 6:
+            return True
+
+        # phase3: 进入稳定阶段后又丢失太久，直接结束
+        if self.phase == 3 and self.loss_streak >= 6:
+            return True
+
+        # phase4 成功
+        if self.phase == 4 and self.freeze_steps >= self.max_freeze_steps and self.last_contact_sum >= 2:
+            return True
+
+        # phase4 掉了
+        if self.phase == 4 and self.loss_streak >= 4:
             return True
 
         return False
+
+
+
 
 
     # =====================================================

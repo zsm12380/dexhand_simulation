@@ -28,7 +28,7 @@ def make_env():
 
         # 推荐先用 delta 控制
         action_type="delta",
-        delta_scale=0.03,
+        delta_scale=0.001,
     )
     return Monitor(env)
 
@@ -76,7 +76,7 @@ def main():
     )
 
     model.learn(
-        total_timesteps=800000,
+        total_timesteps=20000,
         callback=[checkpoint_callback, eval_callback],
         log_interval=10,
         progress_bar=False,

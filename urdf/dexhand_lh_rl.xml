@@ -63,13 +63,13 @@
       <!-- 拇指基部（THJ4/THJ3） -->
       <default class="thumb_base">
         <joint range="-1.0472 1.0472" axis="1 0 0" damping="0.5"/>
-        <position ctrlrange="-1.0472 1.0472" kp="20"/>
+        <position ctrlrange="-1.0472 1.0472" kp="12" forcerange="-8 12"/>
       </default>
 
       <!-- 拇指弯曲（THJ2/THJ1） -->
       <default class="thumb_flex">
         <joint range="0 1.5708" axis="-1 0 0" damping="0.5"/>
-        <position ctrlrange="0 1.5708" kp="20"/>
+        <position ctrlrange="0 1.5708" kp="15" forcerange="-8 12"/>
       </default>
 
       <!-- 手指外展 -->
@@ -81,7 +81,7 @@
       <!-- 手指弯曲 -->
       <default class="finger_flex">
         <joint range="0 1.5708" axis="-1 0 0" damping="1.0"/>
-        <position ctrlrange="0 1.5708" kp="100" forcerange="-50 100"/>
+        <position ctrlrange="0 1.5708" kp="30" forcerange="-10 20"/>
       </default>
 
 
@@ -109,16 +109,17 @@
 
   <worldbody>
     <!-- 物体定义在这里，放在手的前方，稍微偏右一些 -->
-    <body name="object" pos="0.07 0.03 0.33">
-    <freejoint/>
-    <geom name="object_geom"
-          type="mesh"
-          mesh="object"
-          quat="0.7071 0 0 0.7071"
-          mass="0.05"
-          rgba="1 0 0 1"
-          contype="1"
-          conaffinity="1"/>
+    <body name="object" pos="0.03 0.08 0.38">
+        <freejoint/>
+        <geom name="object_geom"
+              type="box"
+              size="0.045 0.045 0.015"
+              quat="0.9239 0.3827 0 0"
+              mass="0.1"
+              rgba="1 0 0 1"
+              contype="1"
+              conaffinity="1"
+              friction="1.5 0.05 0.01"/>
     </body>
 
     <geom type="mesh" mesh="base_link" contype="0" conaffinity="0"/>
@@ -203,8 +204,8 @@
               <body name="THJ1" pos="0 0.00017925 0.035" quat="0.999997 -0.0025608 0 0">
                 <inertial pos="-0.000140509 -0.00431797 0.012817" quat="0.959852 -0.278651 0.00931821 0.0308464" mass="0.00714019" diaginertia="1.17686e-06 1.05093e-06 3.68397e-07"/>
                 <joint name="THJ1" class="thumb_flex" pos="0 0 0" axis="-1 0 0" range="0 1.5708" actuatorfrcrange="-10 10"/>
-                <geom type="mesh" rgba="1 1 1 1" mesh="THJ1"/>
-                <geom name="th_tip_geom" pos="0 -0.0055 0.0285" quat="1 0 0 0" type="mesh" mesh="THJ0"/>
+                <geom name="th_distal_geom" type="mesh" rgba="1 1 1 1" mesh="THJ1" friction="2.0 0.1 0.02"/>
+                <geom name="th_tip_geom" pos="0 -0.0055 0.0285" quat="1 0 0 0" type="mesh" mesh="THJ0" friction="2.0 0.1 0.02"/>
                 <!-- 加入指尖接触点 -->
                 <site name="th_tip_site" pos="0.000 0.0054 0.0285" size="0.002" rgba="1 0 0 1"/>
                 <!-- <geom name="th_tip_geom" type="sphere" pos="0.000 0.0054 0.0287"
@@ -235,8 +236,8 @@
                 <!-- <geom name="ff_tip_geom" type="sphere" pos="0.000 0.0064 0.0250" size="0.003"
                       rgba="1 0 0 0.35" contype="1" conaffinity="1"/> -->
 
-                <geom type="mesh" rgba="1 1 1 1" mesh="FFJ1"/>
-                <geom name="ff_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="FFJ0"/>
+                <geom name="ff_distal_geom" type="mesh" rgba="1 1 1 1" mesh="FFJ1" friction="2.0 0.1 0.02"/>
+                <geom name="ff_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="FFJ0" friction="2.0 0.1 0.02"/>
               </body>
             </body>
           </body>
@@ -262,8 +263,8 @@
                       rgba="1 0 0 0.35" contype="1" conaffinity="1"/> -->
 
 
-                <geom type="mesh" rgba="1 1 1 1" mesh="MFJ1"/>
-                <geom name="mf_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="MFJ0"/>
+                <geom name="mf_distal_geom" type="mesh" rgba="1 1 1 1" mesh="MFJ1" friction="2.0 0.1 0.02"/>
+                <geom name="mf_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="MFJ0" friction="2.0 0.1 0.02"/>
               </body>
             </body>
           </body>
