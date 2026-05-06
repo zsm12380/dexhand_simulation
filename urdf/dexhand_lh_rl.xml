@@ -210,7 +210,10 @@
                 <site name="th_tip_site" pos="0.000 0.0054 0.0285" size="0.002" rgba="1 0 0 1"/>
                 <!-- <geom name="th_tip_geom" type="sphere" pos="0.000 0.0054 0.0287"
                       size="0.003" rgba="1 0 0 0.35" contype="1" conaffinity="1"/> -->
-
+                <site name="th_j1_ref_site"
+                      pos="0.000 -0.003 0.0330"
+                      size="0.002"
+                      rgba="0 0 1 1"/>
 
               </body>
             </body>
@@ -235,6 +238,11 @@
                 <site name="ff_tip_site" pos="0.000 0.0064 0.0250" size="0.002" rgba="1 0 0 1"/>
                 <!-- <geom name="ff_tip_geom" type="sphere" pos="0.000 0.0064 0.0250" size="0.003"
                       rgba="1 0 0 0.35" contype="1" conaffinity="1"/> -->
+
+                <site name="ff_j1_ref_site"
+                      pos="0.000 -0.003 0.0330"
+                      size="0.002"
+                      rgba="0 0 1 1"/>
 
                 <geom name="ff_distal_geom" type="mesh" rgba="1 1 1 1" mesh="FFJ1" friction="2.0 0.1 0.02"/>
                 <geom name="ff_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="FFJ0" friction="2.0 0.1 0.02"/>
@@ -261,7 +269,11 @@
                 <site name="mf_tip_site" pos="0.000 0.0064 0.0250" size="0.002" rgba="1 0 0 1"/>
                 <!-- <geom name="mf_tip_geom" type="sphere" pos="0.000 0.0064 0.0250" size="0.003"
                       rgba="1 0 0 0.35" contype="1" conaffinity="1"/> -->
-
+                
+                <site name="mf_j1_ref_site"
+                      pos="0.000 -0.003 0.0330"
+                      size="0.002"
+                      rgba="0 0 1 1"/>
 
                 <geom name="mf_distal_geom" type="mesh" rgba="1 1 1 1" mesh="MFJ1" friction="2.0 0.1 0.02"/>
                 <geom name="mf_tip_geom" pos="0.0001 0.0028 0.025" quat="1 0 0 0" type="mesh" mesh="MFJ0" friction="2.0 0.1 0.02"/>

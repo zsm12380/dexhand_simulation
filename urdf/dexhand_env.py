@@ -99,6 +99,7 @@ class DexHandGraspEnv(gym.Env):
         # 关键 site
         # ------------------------------------------------
         self.tripod_site_names = ["th_tip_site", "ff_tip_site", "mf_tip_site"]
+        self.tripod_ref_site_names = ["th_j1_ref_site", "ff_j1_ref_site", "mf_j1_ref_site"]
         self.palm_site_names = [
             "palm_contact_ff",
             "palm_contact_mf",
@@ -107,7 +108,7 @@ class DexHandGraspEnv(gym.Env):
         ]
 
         self.site_ids = {}
-        for s in self.tripod_site_names + self.palm_site_names:
+        for s in self.tripod_site_names + self.palm_site_names + self.tripod_ref_site_names:
             sid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, s)
             if sid < 0:
                 raise ValueError(f"找不到 site: {s}")
@@ -306,9 +307,9 @@ class DexHandGraspEnv(gym.Env):
         obj_pos = self._get_object_pos()
         palm_center = self._get_palm_center()
 
-        th_pos = self._get_site_pos("th_tip_site")
-        ff_pos = self._get_site_pos("ff_tip_site")
-        mf_pos = self._get_site_pos("mf_tip_site")
+        th_pos = self._get_site_pos("th_j1_ref_site")
+        ff_pos = self._get_site_pos("ff_j1_ref_site")
+        mf_pos = self._get_site_pos("mf_j1_ref_site")
 
         # ---------- 几何 ----------
         palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
