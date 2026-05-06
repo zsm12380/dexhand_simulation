@@ -8,22 +8,20 @@ from dexhand_env import DexHandGraspEnv
 
 
 def main():
-    # 1) 创建环境
+    # 1) 创建环境（与训练保持一致）
     env = DexHandGraspEnv(
         model_path="dexhand_lh_rl.xml",
+        workspace_path="workspace_tripod.npz",
         object_geom_name="object_geom",
-        thumb_geom_name="th_tip_geom",
-        index_geom_name="ff_tip_geom",
-        middle_geom_name="mf_tip_geom",
         frame_skip=5,
-        max_steps=200,
+        max_steps=220,
         action_type="delta",
-        delta_scale=0.03,
+        delta_scale=0.002,
     )
 
-    # 2) 加载模型
-    # 你可以改成 best_model 路径
-    model = SAC.load("dexhand_tripod_named_sac_final", env=env)
+    # 2) 加载模型（注意文件名要与你训练保存一致）
+    # SAC.save("xxx") 生成的是 xxx.zip
+    model = SAC.load("dexhand_tripod_workspace_sac_final.zip", env=env)
 
     # 3) reset
     obs, info = env.reset()
@@ -35,45 +33,39 @@ def main():
     print("启动 viewer，可直接观察抓取过程。")
     print("关闭 viewer 窗口即可退出。")
 
-    # 4) 启动 Mujoco viewer
+    # 4) 启动 MuJoCo viewer
     with mujoco.viewer.launch_passive(env.model, env.data) as viewer:
-        # 可选：设置相机
         viewer.cam.azimuth = 135
         viewer.cam.elevation = -20
         viewer.cam.distance = 1.2
-        viewer.cam.lookat[:] = np.array([0.0, 0.0, 0.1])
+        viewer.cam.lookat[:] = np.array([0.0, 0.0, 0.15])
 
         while viewer.is_running():
-            # 用训练好的策略预测动作
             action, _ = model.predict(obs, deterministic=True)
 
-            # 环境 step
             obs, reward, terminated, truncated, info = env.step(action)
             ep_reward += reward
 
-            # 刷新 viewer
             viewer.sync()
-
-            # 控制播放速度（可选）
             time.sleep(0.01)
 
-            # 打印调试信息
             print(
-                f"[ep={episode_id:02d} step={step_id:03d}] "
+                f"[ep={episode_id:03d} step={step_id:03d}] "
                 f"phase={info.get('phase', -1)} | "
                 f"contact_sum={info.get('contact_sum', -1)} | "
+                f"geom_err={info.get('geom_err', -1.0):.4f} | "
+                f"normal_align={info.get('normal_align', -1.0):.3f} | "
                 f"freeze_steps={info.get('freeze_steps', -1)} | "
-                f"tripod_mean_dist={info.get('tripod_mean_dist', -1):.4f} | "
                 f"success={info.get('success', False)}"
             )
 
             step_id += 1
 
-            # 如果 episode 结束，就自动 reset 继续播放下一局
             if terminated or truncated:
                 print(
                     f"===== Episode {episode_id} finished | "
-                    f"ep_reward={ep_reward:.4f} ====="
+                    f"reward={ep_reward:.4f} | "
+                    f"success={info.get('success', False)} ====="
                 )
                 obs, info = env.reset()
                 episode_id += 1

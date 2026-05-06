@@ -5,29 +5,31 @@ from gymnasium import spaces
 
 
 class DexHandGraspEnv(gym.Env):
-    """
-    第一阶段：三指 tripod pregrasp / contact learning
-    使用：
-    - th_tip_geom
-    - ff_tip_geom
-    - mf_tip_geom
-    和 object_geom 的真实接触
-    """
-
     metadata = {"render_modes": ["human"], "render_fps": 60}
 
     def __init__(
         self,
         model_path: str,
+        workspace_path: str = "workspace_tripod.npz",
         object_geom_name: str = "object_geom",
         object_body_name: str = None,
-        thumb_geom_name: str = "th_tip_geom",
-        index_geom_name: str = "ff_tip_geom",
-        middle_geom_name: str = "mf_tip_geom",
         frame_skip: int = 5,
-        max_steps: int = 200,
-        action_type: str = "delta",   # "absolute" or "delta"
-        delta_scale: float = 0.005,
+        max_steps: int = 220,
+        action_type: str = "delta",
+        delta_scale: float = 0.002,
+        # Tripod geometry. h is the real object thickness / grasp thickness.
+        tripod_h: float = 0.015,
+        tol_h: float = 0.00025,
+        tol_sym: float = 0.0008,
+        tol_base_height_orth: float = 0.04,
+        tol_normal_plane: float = 0.04,
+        tol_normal_height_align: float = 0.95,
+        min_base_len: float = 0.003,
+        max_tripod_trials: int = 20000,
+        max_reset_attempts: int = 80,
+        require_no_initial_contact: bool = True,
+        object_center_mode: str = "between_thumb_and_base",
+        debug_tripod: bool = True,
     ):
         super().__init__()
 
@@ -37,164 +39,106 @@ class DexHandGraspEnv(gym.Env):
         self.frame_skip = frame_skip
         self.max_steps = max_steps
         self.step_count = 0
-
         self.action_type = action_type
         self.delta_scale = delta_scale
 
-        # ------------------------------------------------
-        # object geom / body
-        # ------------------------------------------------
-        self.object_geom_name = object_geom_name
-        self.object_gid = mujoco.mj_name2id(
-            self.model, mujoco.mjtObj.mjOBJ_GEOM, object_geom_name
-        )
+        self.tripod_h = float(tripod_h)
+        self.tol_h = float(tol_h)
+        self.tol_sym = float(tol_sym)
+        self.tol_base_height_orth = float(tol_base_height_orth)
+        self.tol_normal_plane = float(tol_normal_plane)
+        self.tol_normal_height_align = float(tol_normal_height_align)
+        self.min_base_len = float(min_base_len)
+        self.max_tripod_trials = int(max_tripod_trials)
+        self.max_reset_attempts = int(max_reset_attempts)
+        self.require_no_initial_contact = bool(require_no_initial_contact)
+        self.object_center_mode = object_center_mode
+        self.debug_tripod = bool(debug_tripod)
+
+        # object
+        self.object_gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, object_geom_name)
         if self.object_gid < 0:
             raise ValueError(f"找不到 object geom: {object_geom_name}")
 
-        self.object_body_name = object_body_name
         if object_body_name is not None:
-            self.object_bid = mujoco.mj_name2id(
-                self.model, mujoco.mjtObj.mjOBJ_BODY, object_body_name
-            )
+            self.object_bid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, object_body_name)
             if self.object_bid < 0:
                 raise ValueError(f"找不到 object body: {object_body_name}")
         else:
-            self.object_bid = self.model.geom_bodyid[self.object_gid]
+            self.object_bid = int(self.model.geom_bodyid[self.object_gid])
 
-        # ------------------------------------------------
-        # 三个关键指尖 geom
-        # ------------------------------------------------
-        # ------------------------------------------------
-        # 三个关键手指的“接触组geom”
-        # 每根手指 = distal本体(J1) + tip patch(J0)
-        # ------------------------------------------------
-        self.thumb_geom_names = ["th_distal_geom", "th_tip_geom"]
-        self.index_geom_names = ["ff_distal_geom", "ff_tip_geom"]
-        self.middle_geom_names = ["mf_distal_geom", "mf_tip_geom"]
+        # finger geom groups
+        self.thumb_gids = self._geom_ids(["th_distal_geom", "th_tip_geom"], "thumb")
+        self.index_gids = self._geom_ids(["ff_distal_geom", "ff_tip_geom"], "index")
+        self.middle_gids = self._geom_ids(["mf_distal_geom", "mf_tip_geom"], "middle")
+        self.tripod_hand_gids = set(self.thumb_gids + self.index_gids + self.middle_gids)
 
-        self.thumb_gids = []
-        self.index_gids = []
-        self.middle_gids = []
-
-        for name in self.thumb_geom_names:
-            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
-            if gid < 0:
-                raise ValueError(f"找不到 thumb geom: {name}")
-            self.thumb_gids.append(gid)
-
-        for name in self.index_geom_names:
-            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
-            if gid < 0:
-                raise ValueError(f"找不到 index geom: {name}")
-            self.index_gids.append(gid)
-
-        for name in self.middle_geom_names:
-            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, name)
-            if gid < 0:
-                raise ValueError(f"找不到 middle geom: {name}")
-            self.middle_gids.append(gid)
-
-
-        # ------------------------------------------------
-        # 关键 site
-        # ------------------------------------------------
+        # sites
         self.tripod_site_names = ["th_tip_site", "ff_tip_site", "mf_tip_site"]
         self.tripod_ref_site_names = ["th_j1_ref_site", "ff_j1_ref_site", "mf_j1_ref_site"]
-        self.palm_site_names = [
-            "palm_contact_ff",
-            "palm_contact_mf",
-            "palm_contact_rf",
-            "palm_contact_lf",
-        ]
+        self.palm_site_names = ["palm_contact_ff", "palm_contact_mf", "palm_contact_rf", "palm_contact_lf"]
 
         self.site_ids = {}
-        for s in self.tripod_site_names + self.palm_site_names + self.tripod_ref_site_names:
+        for s in self.tripod_site_names + self.tripod_ref_site_names + self.palm_site_names:
             sid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, s)
             if sid < 0:
                 raise ValueError(f"找不到 site: {s}")
             self.site_ids[s] = sid
 
-        # ------------------------------------------------
-        # action / obs
-        # ------------------------------------------------
+        # actuator map
         self.nu = self.model.nu
-
-        # ===== 锁定无名指/小指 actuator 到 0 =====
         self.act_name_to_id = {}
-        for i in range(self.model.nu):
-            name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
-            if name is not None:
-                self.act_name_to_id[name] = i
+        for i in range(self.nu):
+            n = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
+            if n is not None:
+                self.act_name_to_id[n] = i
 
-        self.locked_act_names = [
-            "RFJ4", "RFJ3", "RFJ2", "RFJ1",
-            "LFJ4", "LFJ3", "LFJ2", "LFJ1",
-        ]
-
+        # lock RF/LF
+        self.locked_act_names = ["RFJ4", "RFJ3", "RFJ2", "RFJ1", "LFJ4", "LFJ3", "LFJ2", "LFJ1"]
         self.locked_act_target = {}
         for n in self.locked_act_names:
             if n in self.act_name_to_id:
                 aid = self.act_name_to_id[n]
                 lo, hi = self.model.actuator_ctrlrange[aid]
+                self.locked_act_target[aid] = float(np.clip(0.0, lo, hi))
 
-                # 固定到 0；若 0 不在范围内则夹到范围边界
-                target = np.clip(0.0, lo, hi)
-                self.locked_act_target[aid] = float(target)
+        # load workspace
+        ws = np.load(workspace_path)
+        self.ws_th_pos = ws["th_pos"].astype(np.float64)
+        self.ws_th_nrm = ws["th_nrm"].astype(np.float64)
+        self.ws_ff_pos = ws["ff_pos"].astype(np.float64)
+        self.ws_ff_nrm = ws["ff_nrm"].astype(np.float64)
+        self.ws_mf_pos = ws["mf_pos"].astype(np.float64)
+        self.ws_mf_nrm = ws["mf_nrm"].astype(np.float64)
 
-        # 记录最近contact
-        self.last_contact_sum = 0
-
-        # ===== 四阶段状态机 =====
-        # 1: approach
-        # 2: contact
-        # 3: stabilize_soft
-        # 4: freeze_hold
+        # phase
         self.phase = 1
-
-        # 连续接触计数
         self.contact_streak = 0
         self.loss_streak = 0
-
-        # soft stabilize 阶段的计数
         self.stabilize_steps = 0
-        self.max_stabilize_steps = 6   # 接触后先微调几步
-
-        # freeze hold 阶段
+        self.max_stabilize_steps = 10
         self.freeze_ctrl = None
         self.freeze_steps = 0
-        self.max_freeze_steps = 12
-
-        # 成功标志
+        self.max_freeze_steps = 15
         self.success_hold = False
-        # ===== action space =====
-        self.action_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(self.nu,), dtype=np.float32
-        )
 
-        # ===== 历史状态 =====
+        # history
         self.prev_action = np.zeros(self.nu, dtype=np.float32)
         self.prev_ctrl = np.zeros(self.nu, dtype=np.float32)
+        self.prev_geom_err = None
+        self.prev_obj_speed = None
+        self.last_contact_sum = 0
+        self.target_tripod = None
 
-        self.prev_palm_obj_dist = None
-        self.prev_tripod_mean_dist = None
-
-        # ===== 先 reset 一次，构建 observation_space =====
+        # spaces
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(self.nu,), dtype=np.float32)
         obs = self._reset_sim_and_get_obs()
-
-        self.observation_space = spaces.Box(
-            low=-np.inf,
-            high=np.inf,
-            shape=obs.shape,
-            dtype=np.float32,
-        )
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=obs.shape, dtype=np.float32)
 
         print("[DexHandGraspEnv] action_space:", self.action_space)
         print("[DexHandGraspEnv] observation_space:", self.observation_space)
 
-
-    # =====================================================
-    # Gym API
-    # =====================================================
+    # ===== gym api =====
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         obs = self._reset_sim_and_get_obs()
@@ -202,7 +146,6 @@ class DexHandGraspEnv(gym.Env):
 
     def step(self, action):
         self.step_count += 1
-
         action = np.asarray(action, dtype=np.float32)
         action = np.clip(action, -1.0, 1.0)
 
@@ -214,10 +157,8 @@ class DexHandGraspEnv(gym.Env):
 
         obs = self._get_obs()
         reward, info = self._compute_reward(action)
-
         terminated = self._check_terminated()
         truncated = self.step_count >= self.max_steps
-
         return obs, reward, terminated, truncated, info
 
     def render(self):
@@ -226,45 +167,84 @@ class DexHandGraspEnv(gym.Env):
     def close(self):
         pass
 
-    # =====================================================
-    # Reset / Obs
-    # =====================================================
+    # ===== reset/obs =====
     def _reset_sim_and_get_obs(self):
         mujoco.mj_resetData(self.model, self.data)
-
-        self.last_contact_sum = 0
 
         self.phase = 1
         self.contact_streak = 0
         self.loss_streak = 0
-
         self.stabilize_steps = 0
         self.freeze_ctrl = None
         self.freeze_steps = 0
         self.success_hold = False
-
-
+        self.last_contact_sum = 0
         self.step_count = 0
-        self.prev_action[:] = 0.0
 
+        self.prev_action[:] = 0.0
         self.prev_ctrl = self._default_ctrl().copy()
         self.data.ctrl[:] = self.prev_ctrl
 
-        self._randomize_object_pose_if_possible()
+        found_valid_reset = False
+        last_sol = None
+        last_contact_sum = None
 
-        mujoco.mj_forward(self.model, self.data)
+        for attempt in range(self.max_reset_attempts):
+            sol = self._solve_tripod_targets_from_workspace(
+                h=self.tripod_h,
+                tol_h=self.tol_h,
+                tol_sym=self.tol_sym,
+                tol_base_height_orth=self.tol_base_height_orth,
+                tol_normal_plane=self.tol_normal_plane,
+                tol_normal_height_align=self.tol_normal_height_align,
+                min_base_len=self.min_base_len,
+                max_trials=self.max_tripod_trials,
+            )
 
-        palm_center = self._get_palm_center()
-        obj_pos = self._get_object_pos()
-        tripod_dists = self._get_tripod_dists(obj_pos)
+            if sol is None:
+                continue
 
-        self.prev_palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
-        self.prev_tripod_mean_dist = np.mean(tripod_dists)
+            last_sol = sol
+            self._place_object_from_tripod_solution(sol)
+            self.target_tripod = sol
+            mujoco.mj_forward(self.model, self.data)
 
-        obj_linvel, obj_angvel = self._get_object_velocity()
+            contact_sum = sum(self._get_tripod_contacts())
+            last_contact_sum = contact_sum
+
+            if (not self.require_no_initial_contact) or contact_sum == 0:
+                found_valid_reset = True
+                break
+
+        if not found_valid_reset:
+            if last_sol is not None:
+                self._place_object_from_tripod_solution(last_sol)
+                self.target_tripod = last_sol
+            else:
+                self._randomize_object_pose_if_possible()
+                self.target_tripod = None
+            mujoco.mj_forward(self.model, self.data)
+
+        self.prev_geom_err = self._compute_geom_err_to_target()
+        obj_linvel, _ = self._get_object_velocity()
         self.prev_obj_speed = float(np.linalg.norm(obj_linvel))
-        self.best_contact_sum = 0
-        self.best_contact_streak = 0
+
+        if self.debug_tripod and self.target_tripod is not None:
+            th_c, ff_c, mf_c = self._get_tripod_contacts()
+            sol = self.target_tripod
+            print(
+                "[RESET]",
+                f"ok={found_valid_reset}",
+                f"contact=({th_c},{ff_c},{mf_c})",
+                f"ncon={self.data.ncon}",
+                f"geom_err={self.prev_geom_err:.8f}",
+                f"h_err={sol.get('h_err', -1.0):.8f}",
+                f"sym={sol.get('sym', -1.0):.8f}",
+                f"orth={sol.get('base_height_orth_err', -1.0):.6f}",
+                f"plane={sol.get('normal_plane_err', -1.0):.6f}",
+                f"height_align={sol.get('normal_height_score', -1.0):.6f}",
+                f"last_contact={last_contact_sum}",
+            )
 
         return self._get_obs()
 
@@ -275,13 +255,22 @@ class DexHandGraspEnv(gym.Env):
         obj_pos = self._get_object_pos().astype(np.float32)
         obj_linvel, obj_angvel = self._get_object_velocity()
 
-        palm_center = self._get_palm_center().astype(np.float32)
-        th_pos = self._get_site_pos("th_tip_site").astype(np.float32)
-        ff_pos = self._get_site_pos("ff_tip_site").astype(np.float32)
-        mf_pos = self._get_site_pos("mf_tip_site").astype(np.float32)
+        # 用 fingertip site 和 reward 保持一致，不再用 j1_ref_site 做主要几何误差。
+        th = self._get_site_pos("th_tip_site").astype(np.float32)
+        ff = self._get_site_pos("ff_tip_site").astype(np.float32)
+        mf = self._get_site_pos("mf_tip_site").astype(np.float32)
+
+        if self.target_tripod is not None:
+            pth = self.target_tripod["pth"].astype(np.float32)
+            pff = self.target_tripod["pff"].astype(np.float32)
+            pmf = self.target_tripod["pmf"].astype(np.float32)
+        else:
+            pth, pff, pmf = th.copy(), ff.copy(), mf.copy()
 
         th_c, ff_c, mf_c = self._get_tripod_contacts()
         contact_vec = np.array([th_c, ff_c, mf_c], dtype=np.float32)
+
+        phase_vec = np.array([self.phase / 4.0], dtype=np.float32)
 
         obs = np.concatenate([
             qpos,
@@ -289,73 +278,32 @@ class DexHandGraspEnv(gym.Env):
             obj_pos,
             obj_linvel.astype(np.float32),
             obj_angvel.astype(np.float32),
-            palm_center - obj_pos,
-            th_pos - obj_pos,
-            ff_pos - obj_pos,
-            mf_pos - obj_pos,
+            th - pth,
+            ff - pff,
+            mf - pmf,
             contact_vec,
+            phase_vec,
             self.prev_action.astype(np.float32),
             self.prev_ctrl.astype(np.float32),
         ], axis=0)
-
         return obs
 
-    # =====================================================
-    # Reward
-    # =====================================================
+    # ===== reward =====
     def _compute_reward(self, action):
-        obj_pos = self._get_object_pos()
-        palm_center = self._get_palm_center()
-
-        th_pos = self._get_site_pos("th_j1_ref_site")
-        ff_pos = self._get_site_pos("ff_j1_ref_site")
-        mf_pos = self._get_site_pos("mf_j1_ref_site")
-
-        # ---------- 几何 ----------
-        palm_obj_dist = np.linalg.norm(palm_center - obj_pos)
-
-        tripod_dists = np.array([
-            np.linalg.norm(th_pos - obj_pos),
-            np.linalg.norm(ff_pos - obj_pos),
-            np.linalg.norm(mf_pos - obj_pos),
-        ], dtype=np.float32)
-        tripod_mean_dist = float(np.mean(tripod_dists))
-
-        # dense proximity
-        r_palm_dense = np.exp(-4.0 * palm_obj_dist)
-        r_tripod_dense = np.exp(-10.0 * tripod_mean_dist)
-
-        # progress
-        palm_progress = 0.0
-        if self.prev_palm_obj_dist is not None:
-            palm_progress = self.prev_palm_obj_dist - palm_obj_dist
-
-        tripod_progress = 0.0
-        if self.prev_tripod_mean_dist is not None:
-            tripod_progress = self.prev_tripod_mean_dist - tripod_mean_dist
-
-        # 远离惩罚（只罚变远）
-        dist_apart = 0.0
-        if self.prev_tripod_mean_dist is not None:
-            dist_apart = max(tripod_mean_dist - self.prev_tripod_mean_dist, 0.0)
-
-        r_tripod_shape = self._compute_tripod_shape_reward(th_pos, ff_pos, mf_pos, obj_pos)
-
-        # ---------- 接触 ----------
         th_c, ff_c, mf_c = self._get_tripod_contacts()
         contact_sum = th_c + ff_c + mf_c
         self.last_contact_sum = contact_sum
 
-        # ---------- 物体速度 ----------
+        geom_err = self._compute_geom_err_to_target()
+        geom_prog = 0.0 if self.prev_geom_err is None else (self.prev_geom_err - geom_err)
+
+        normal_align = self._compute_normal_align_score()
+
         obj_linvel, obj_angvel = self._get_object_velocity()
         obj_speed = float(np.linalg.norm(obj_linvel))
         obj_ang_speed = float(np.linalg.norm(obj_angvel))
+        speed_inc = 0.0 if self.prev_obj_speed is None else max(obj_speed - self.prev_obj_speed, 0.0)
 
-        speed_increase = 0.0
-        if hasattr(self, "prev_obj_speed") and self.prev_obj_speed is not None:
-            speed_increase = max(obj_speed - self.prev_obj_speed, 0.0)
-
-        # ---------- streak 更新 ----------
         if contact_sum >= 2:
             self.contact_streak += 1
             self.loss_streak = 0
@@ -363,33 +311,30 @@ class DexHandGraspEnv(gym.Env):
             self.contact_streak = 0
             self.loss_streak += 1
 
-        self.best_contact_sum = max(self.best_contact_sum, contact_sum)
-        self.best_contact_streak = max(self.best_contact_streak, self.contact_streak)
-
         prev_phase = self.phase
 
-        # ---------- Phase 转移 ----------
-        if self.phase == 1 and contact_sum >= 1:
-            self.phase = 2
+        # Phase 1: approach. 不再只靠 1 个 contact 立刻升级。
+        if self.phase == 1:
+            if self.step_count >= 4 and geom_err < 0.006 and contact_sum >= 1:
+                self.phase = 2
 
-        if (
-            self.phase == 2 and
-            self.contact_streak >= 2 and
-            contact_sum >= 2 and
-            obj_speed < 0.20
-        ):
-            self.phase = 3
-            self.stabilize_steps = 0
+        # Phase 2: establish two/three contacts.
+        if self.phase == 2:
+            if geom_err < 0.004 and contact_sum >= 2 and self.contact_streak >= 3:
+                self.phase = 3
+                self.stabilize_steps = 0
 
+        # Phase 3: stabilize tripod grasp.
         if self.phase == 3:
             self.stabilize_steps += 1
-
-            if (
+            stable = (
                 contact_sum >= 2 and
-                obj_speed < 0.03 and
-                obj_ang_speed < 0.30 and
+                normal_align > 0.55 and
+                obj_speed < 0.035 and
+                obj_ang_speed < 0.45 and
                 self.stabilize_steps >= self.max_stabilize_steps
-            ):
+            )
+            if stable:
                 self.phase = 4
                 self.freeze_ctrl = self.data.ctrl.copy()
                 self.freeze_steps = 0
@@ -399,303 +344,401 @@ class DexHandGraspEnv(gym.Env):
 
         if self.phase != prev_phase:
             print(
-                f"[PHASE TRANSITION] step={self.step_count}, "
-                f"{prev_phase} -> {self.phase}, "
-                f"contact_sum={contact_sum}, "
-                f"tripod_mean_dist={tripod_mean_dist:.4f}, "
-                f"obj_speed={obj_speed:.4f}"
+                f"[PHASE] {prev_phase}->{self.phase}, "
+                f"step={self.step_count}, contact={contact_sum}, "
+                f"geom_err={geom_err:.8f}, n_align={normal_align:.3f}"
             )
 
-        # ---------- 通用惩罚 ----------
-        r_ctrl_penalty = -0.0015 * np.sum(np.square(action))
-        r_smooth_penalty = -0.0030 * np.sum(np.square(action - self.prev_action))
+        # Reward terms.
+        r_geom = -10.0 * geom_err + 16.0 * geom_prog
+        r_contact = 1.2 * contact_sum + (2.0 if contact_sum >= 2 else 0.0) + (3.0 if contact_sum == 3 else 0.0)
+        r_normal = 5.0 * normal_align
+        r_stable = -1.4 * obj_speed - 0.22 * obj_ang_speed - 0.6 * speed_inc
+        r_ctrl = -0.0015 * np.sum(np.square(action))
+        r_smooth = -0.0030 * np.sum(np.square(action - self.prev_action))
 
-        # 接触时物体速度大，要明显惩罚
-        # 未接触时不要太重，否则接近过程被压死
-        if contact_sum > 0:
-            r_obj_speed = -1.2 * obj_speed - 0.15 * obj_ang_speed
-        else:
-            r_obj_speed = -0.15 * obj_speed - 0.02 * obj_ang_speed
+        # 如果一开始就乱撞到物体，不要直接高奖励。
+        early_contact_penalty = 0.0
+        if self.phase == 1 and self.step_count < 4 and contact_sum > 0:
+            early_contact_penalty = -1.0 * contact_sum
 
-        # 速度突然上涨，也要罚
-        r_speed_burst = -0.6 * speed_increase
-
-        reward = 0.0
-
-        # ==================================================
-        # Phase 1: approach
-        # ==================================================
         if self.phase == 1:
-            r_contact_bonus = 0.8 if contact_sum >= 1 else 0.0
-
-            reward = (
-                1.0 * r_palm_dense +
-                2.0 * r_tripod_dense +
-                6.0 * palm_progress +
-                10.0 * tripod_progress +
-                0.4 * r_tripod_shape +
-                r_contact_bonus +
-                r_ctrl_penalty +
-                r_smooth_penalty
-            )
-
-        # ==================================================
-        # Phase 2: make and keep contact
-        # ==================================================
+            reward = r_geom + 0.25 * r_contact + 0.25 * r_normal + r_ctrl + r_smooth + early_contact_penalty
         elif self.phase == 2:
-            r_contact_count = 1.2 * contact_sum
-            r_multi_contact = 2.0 if contact_sum >= 2 else 0.0
-            r_tripod_full = 3.0 if contact_sum == 3 else 0.0
-
-            # 持续接触奖励：鼓励别一碰就掉
-            r_persist = 0.8 * min(self.contact_streak, 5)
-
-            # 接触后还继续靠近/包裹
-            r_close_keep = 2.0 * np.exp(-12.0 * tripod_mean_dist)
-
-            # 继续变近奖励
-            r_progress_keep = 8.0 * max(tripod_progress, 0.0)
-
-            # 一旦开始远离，重罚
-            r_apart = -10.0 * dist_apart
-
-            # 丢接触惩罚，连续掉越久越重
-            r_drop = -0.8 * min(self.loss_streak, 6) if contact_sum == 0 else 0.0
-
-            # 如果接触很少但速度很大，说明在推
-            r_push_penalty = 0.0
-            if contact_sum <= 1:
-                r_push_penalty = -0.8 * obj_speed
-
-            reward = (
-                r_contact_count +
-                r_multi_contact +
-                r_tripod_full +
-                r_persist +
-                r_close_keep +
-                r_progress_keep +
-                0.3 * r_tripod_shape +
-                r_apart +
-                r_drop +
-                r_push_penalty +
-                r_obj_speed +
-                r_speed_burst +
-                1.5 * r_ctrl_penalty +
-                1.5 * r_smooth_penalty
-            )
-
-        # ==================================================
-        # Phase 3: stabilize
-        # ==================================================
+            reward = 0.9 * r_geom + 1.0 * r_contact + 0.8 * r_normal + 0.7 * r_stable + 1.2 * r_ctrl + 1.2 * r_smooth
         elif self.phase == 3:
-            r_hold = 4.0 if contact_sum >= 2 else 0.0
-            r_hold += 2.0 if contact_sum == 3 else 0.0
-
-            r_stable_close = 2.5 * np.exp(-15.0 * tripod_mean_dist)
-            r_low_speed = -1.8 * obj_speed - 0.25 * obj_ang_speed
-            r_apart = -8.0 * dist_apart
-
-            # phase3 掉了接触，重罚
-            if contact_sum == 0:
-                r_drop = -6.0
-            elif contact_sum == 1:
-                r_drop = -2.0
-            else:
-                r_drop = 0.0
-
-            # 每稳定一步给一点奖励
-            r_stabilize_progress = 0.8
-
-            reward = (
-                r_hold +
-                r_stable_close +
-                r_low_speed +
-                r_apart +
-                r_drop +
-                r_stabilize_progress +
-                r_speed_burst +
-                1.5 * r_ctrl_penalty +
-                1.5 * r_smooth_penalty
-            )
-
-        # ==================================================
-        # Phase 4: freeze hold
-        # ==================================================
+            reward = 0.7 * r_geom + 1.2 * r_contact + 1.2 * r_normal + 1.0 * r_stable + 1.2 * r_ctrl + 1.2 * r_smooth + 0.8
         else:
-            r_hold = 8.0 if contact_sum >= 2 else 0.0
-            r_hold += 3.0 if contact_sum == 3 else 0.0
+            reward = 1.4 * r_contact + 1.6 * r_normal + 1.0 * r_stable + 1.2
 
-            r_low_speed = -1.5 * obj_speed - 0.2 * obj_ang_speed
-
-            if contact_sum == 0:
-                r_drop = -8.0
-            elif contact_sum == 1:
-                r_drop = -3.0
-            else:
-                r_drop = 0.0
-
-            r_freeze_bonus = 1.2
-
-            reward = (
-                r_hold +
-                r_low_speed +
-                r_drop +
-                r_freeze_bonus
-            )
-
-        # ---------- success ----------
         success = (
             self.phase == 4 and
             self.freeze_steps >= self.max_freeze_steps and
-            contact_sum >= 2
+            contact_sum >= 2 and
+            normal_align > 0.55
         )
-
         if success:
             reward += 100.0
             self.success_hold = True
 
-        # ---------- update history ----------
-        self.prev_palm_obj_dist = palm_obj_dist
-        self.prev_tripod_mean_dist = tripod_mean_dist
+        self.prev_geom_err = geom_err
         self.prev_obj_speed = obj_speed
         self.prev_action = action.copy()
 
         info = {
             "reward_total": float(reward),
             "phase": int(self.phase),
-            "stabilize_steps": int(self.stabilize_steps),
-            "freeze_steps": int(self.freeze_steps),
-            "palm_obj_dist": float(palm_obj_dist),
-            "tripod_mean_dist": float(tripod_mean_dist),
-            "r_tripod_shape": float(r_tripod_shape),
+            "geom_err": float(geom_err),
+            "geom_progress": float(geom_prog),
+            "normal_align": float(normal_align),
             "obj_speed": float(obj_speed),
             "obj_ang_speed": float(obj_ang_speed),
+            "contact_sum": int(contact_sum),
             "th_contact": int(th_c),
             "ff_contact": int(ff_c),
             "mf_contact": int(mf_c),
-            "contact_sum": int(contact_sum),
             "contact_streak": int(self.contact_streak),
             "loss_streak": int(self.loss_streak),
-            "best_contact_sum": int(self.best_contact_sum),
-            "best_contact_streak": int(self.best_contact_streak),
+            "freeze_steps": int(self.freeze_steps),
             "success": bool(success),
         }
         return float(reward), info
 
-
-
-
-    # =====================================================
-    # Contact
-    # =====================================================
-    def _geom_pair_in_contact(self, gid_a, gid_b):
-        for i in range(self.data.ncon):
-            c = self.data.contact[i]
-            g1, g2 = c.geom1, c.geom2
-            if (g1 == gid_a and g2 == gid_b) or (g1 == gid_b and g2 == gid_a):
-                return 1
-        return 0
-
-    def _geom_group_in_contact(self, geom_ids, object_gid):
-        for i in range(self.data.ncon):
-            c = self.data.contact[i]
-            g1, g2 = c.geom1, c.geom2
-
-            if g1 == object_gid and g2 in geom_ids:
-                return 1
-            if g2 == object_gid and g1 in geom_ids:
-                return 1
-        return 0
-    
-    def _get_tripod_contacts(self):
-        th_c = self._geom_group_in_contact(self.thumb_gids, self.object_gid)
-        ff_c = self._geom_group_in_contact(self.index_gids, self.object_gid)
-        mf_c = self._geom_group_in_contact(self.middle_gids, self.object_gid)
-        return th_c, ff_c, mf_c
-
-
-
-    # =====================================================
-    # Geometry helpers
-    # =====================================================
-    def _compute_tripod_shape_reward(self, th_pos, ff_pos, mf_pos, obj_pos):
-        eps = 1e-6
-
-        v_th = th_pos - obj_pos
-        v_ff = ff_pos - obj_pos
-        v_mf = mf_pos - obj_pos
-
-        u_th = v_th / (np.linalg.norm(v_th) + eps)
-        u_ff = v_ff / (np.linalg.norm(v_ff) + eps)
-        u_mf = v_mf / (np.linalg.norm(v_mf) + eps)
-
-        d_th_ff = np.dot(u_th, u_ff)
-        d_th_mf = np.dot(u_th, u_mf)
-        d_ff_mf = np.dot(u_ff, u_mf)
-
-        s_th_ff = (1.0 - d_th_ff) / 2.0
-        s_th_mf = (1.0 - d_th_mf) / 2.0
-        s_ff_mf = (1.0 - d_ff_mf) / 2.0
-
-        reward = 0.4 * s_th_ff + 0.4 * s_th_mf + 0.2 * s_ff_mf
-        return float(reward)
+    # ===== helpers =====
+    def _geom_ids(self, names, tag):
+        ids = []
+        for n in names:
+            gid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, n)
+            if gid < 0:
+                raise ValueError(f"找不到 {tag} geom: {n}")
+            ids.append(int(gid))
+        return ids
 
     def _get_site_pos(self, site_name):
-        sid = self.site_ids[site_name]
-        return self.data.site_xpos[sid].copy()
-
-    def _get_palm_center(self):
-        pts = []
-        for name in self.palm_site_names:
-            pts.append(self._get_site_pos(name))
-        return np.mean(np.array(pts), axis=0)
+        return self.data.site_xpos[self.site_ids[site_name]].copy()
 
     def _get_object_pos(self):
         return self.data.xpos[self.object_bid].copy()
 
-    def _get_tripod_dists(self, obj_pos):
-        return np.array([
-            np.linalg.norm(self._get_site_pos("th_tip_site") - obj_pos),
-            np.linalg.norm(self._get_site_pos("ff_tip_site") - obj_pos),
-            np.linalg.norm(self._get_site_pos("mf_tip_site") - obj_pos),
-        ], dtype=np.float32)
-
     def _get_object_velocity(self):
         vel = np.zeros(6, dtype=np.float64)
         mujoco.mj_objectVelocity(
-            self.model,
-            self.data,
-            mujoco.mjtObj.mjOBJ_BODY,
-            self.object_bid,
-            vel,
-            0,
+            self.model, self.data, mujoco.mjtObj.mjOBJ_BODY, self.object_bid, vel, 0
         )
         angvel = vel[:3].copy()
         linvel = vel[3:].copy()
         return linvel, angvel
 
-    # =====================================================
-    # Control
-    # =====================================================
+    def _geom_group_in_contact(self, geom_ids, object_gid):
+        for i in range(self.data.ncon):
+            c = self.data.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+            if g1 == object_gid and g2 in geom_ids:
+                return 1
+            if g2 == object_gid and g1 in geom_ids:
+                return 1
+        return 0
+
+    def _get_tripod_contacts(self):
+        th = self._geom_group_in_contact(self.thumb_gids, self.object_gid)
+        ff = self._geom_group_in_contact(self.index_gids, self.object_gid)
+        mf = self._geom_group_in_contact(self.middle_gids, self.object_gid)
+        return th, ff, mf
+
+    def _normalize(self, x):
+        x = np.asarray(x, dtype=np.float64)
+        return x / (np.linalg.norm(x) + 1e-9)
+
+    def _solve_tripod_targets_from_workspace(
+        self,
+        h=0.015,
+        tol_h=0.00025,
+        tol_sym=0.0008,
+        tol_base_height_orth=0.04,
+        tol_normal_plane=0.04,
+        tol_normal_height_align=0.95,
+        min_base_len=0.003,
+        max_trials=20000,
+    ):
+        """
+        在三指 workspace 里找一个 thin-object tripod 几何：
+        1. ff 和 mf 构成底边 base。
+        2. thumb 到底边中点的连线是 height。
+        3. ||height|| 严格接近物体厚度 h。
+        4. height 和 base 近似垂直。
+        5. 三个 workspace normal 都在三点形成的平面内。
+        6. ff/mf normal 与 thumb normal 沿 height 方向相对，形成夹持。
+        """
+        best = None
+        best_cost = 1e18
+
+        n_th = len(self.ws_th_pos)
+        n_ff = len(self.ws_ff_pos)
+        n_mf = len(self.ws_mf_pos)
+
+        for _ in range(max_trials):
+            i_th = np.random.randint(0, n_th)
+            i_ff = np.random.randint(0, n_ff)
+            i_mf = np.random.randint(0, n_mf)
+
+            pth = self.ws_th_pos[i_th]
+            pff = self.ws_ff_pos[i_ff]
+            pmf = self.ws_mf_pos[i_mf]
+
+            nth = self._normalize(self.ws_th_nrm[i_th])
+            nff = self._normalize(self.ws_ff_nrm[i_ff])
+            nmf = self._normalize(self.ws_mf_nrm[i_mf])
+
+            base_vec = pff - pmf
+            base_len = float(np.linalg.norm(base_vec))
+            if base_len < min_base_len:
+                continue
+            base_dir = base_vec / (base_len + 1e-9)
+
+            mid = 0.5 * (pff + pmf)
+            height_vec = pth - mid
+            height_len = float(np.linalg.norm(height_vec))
+            if height_len < 1e-9:
+                continue
+            height_dir = height_vec / (height_len + 1e-9)
+
+            # 1. 厚度约束。h 就是物体厚度，不做大范围放宽。
+            h_err = abs(height_len - h)
+            if h_err > tol_h:
+                continue
+
+            # 2. 等腰/中垂线约束。这个约束会让 pth 更接近 ff-mf 的中垂线。
+            l1 = float(np.linalg.norm(pth - pff))
+            l2 = float(np.linalg.norm(pth - pmf))
+            sym = abs(l1 - l2)
+            if sym > tol_sym:
+                continue
+
+            # 3. base 与 height 应该垂直。
+            base_height_orth_err = abs(float(np.dot(base_dir, height_dir)))
+            if base_height_orth_err > tol_base_height_orth:
+                continue
+
+            # 4. 三点形成的面。
+            plane_n = np.cross(base_dir, height_dir)
+            plane_n_norm = float(np.linalg.norm(plane_n))
+            if plane_n_norm < 1e-8:
+                continue
+            plane_n = plane_n / plane_n_norm
+
+            # 5. 法向量应该和三点形成的面平行，也就是与 plane_n 垂直。
+            normal_plane_err = (
+                abs(float(np.dot(nth, plane_n))) +
+                abs(float(np.dot(nff, plane_n))) +
+                abs(float(np.dot(nmf, plane_n)))
+            ) / 3.0
+            if normal_plane_err > tol_normal_plane:
+                continue
+
+            # 6. 法向应沿 height 方向夹持。
+            # candidate +1: ff/mf normal ~= +height, thumb normal ~= -height
+            # candidate -1: ff/mf normal ~= -height, thumb normal ~= +height
+            score_pos = (
+                float(np.dot(nff, height_dir)) +
+                float(np.dot(nmf, height_dir)) +
+                float(np.dot(nth, -height_dir))
+            ) / 3.0
+            score_neg = (
+                float(np.dot(nff, -height_dir)) +
+                float(np.dot(nmf, -height_dir)) +
+                float(np.dot(nth, height_dir))
+            ) / 3.0
+
+            if score_pos >= score_neg:
+                normal_sign = 1.0
+                normal_height_score = score_pos
+                nff_tgt = height_dir.copy()
+                nmf_tgt = height_dir.copy()
+                nth_tgt = -height_dir.copy()
+            else:
+                normal_sign = -1.0
+                normal_height_score = score_neg
+                nff_tgt = -height_dir.copy()
+                nmf_tgt = -height_dir.copy()
+                nth_tgt = height_dir.copy()
+
+            if normal_height_score < tol_normal_height_align:
+                continue
+
+            # 7. thumb normal 应该和 ff/mf normal 相反。
+            opposition_err = 0.5 * (
+                abs(float(np.dot(nth, nff)) + 1.0) +
+                abs(float(np.dot(nth, nmf)) + 1.0)
+            )
+
+            cost = (
+                80.0 * h_err +
+                8.0 * sym +
+                4.0 * base_height_orth_err +
+                4.0 * normal_plane_err +
+                3.0 * (1.0 - normal_height_score) +
+                1.0 * opposition_err
+            )
+
+            if cost < best_cost:
+                best_cost = cost
+                best = dict(
+                    pth=pth.copy(),
+                    pff=pff.copy(),
+                    pmf=pmf.copy(),
+                    nth=nth.copy(),
+                    nff=nff.copy(),
+                    nmf=nmf.copy(),
+                    mid=mid.copy(),
+                    base_dir=base_dir.copy(),
+                    height_dir=height_dir.copy(),
+                    plane_n=plane_n.copy(),
+                    nth_tgt=nth_tgt.copy(),
+                    nff_tgt=nff_tgt.copy(),
+                    nmf_tgt=nmf_tgt.copy(),
+                    normal_sign=float(normal_sign),
+                    h=float(height_len),
+                    h_err=float(h_err),
+                    sym=float(sym),
+                    base_len=float(base_len),
+                    base_height_orth_err=float(base_height_orth_err),
+                    normal_plane_err=float(normal_plane_err),
+                    normal_height_score=float(normal_height_score),
+                    opposition_err=float(opposition_err),
+                    cost=float(cost),
+                )
+
+        return best
+
+    def _place_object_from_tripod_solution(self, sol):
+        pth = sol["pth"]
+        pff = sol["pff"]
+        pmf = sol["pmf"]
+        mid = 0.5 * (pff + pmf)
+
+        base_dir = self._normalize(pff - pmf)
+        height_dir = self._normalize(pth - mid)
+
+        # 如果 h 是物体厚度，物体中心更合理地放在 thumb 面和 ff/mf 面之间，
+        # 也就是 pth 与底边中点 mid 的中点。
+        if self.object_center_mode == "between_thumb_and_base":
+            center = 0.5 * (pth + mid)
+        elif self.object_center_mode == "ff_mf_mid":
+            center = mid.copy()
+        elif self.object_center_mode == "tripod_centroid":
+            center = (pth + pff + pmf) / 3.0
+        else:
+            raise ValueError(f"未知 object_center_mode: {self.object_center_mode}")
+
+        ux = base_dir
+        uy = height_dir
+        uz = np.cross(ux, uy)
+        uz = self._normalize(uz)
+        uy = self._normalize(np.cross(uz, ux))
+
+        R = np.column_stack([ux, uy, uz]).astype(np.float64)
+
+        quat = np.zeros(4, dtype=np.float64)
+        mujoco.mju_mat2Quat(quat, R.reshape(-1))
+
+        jadr = self.model.body_jntadr[self.object_bid]
+        jnum = self.model.body_jntnum[self.object_bid]
+        if jnum <= 0:
+            return
+
+        jid = jadr
+        if self.model.jnt_type[jid] != mujoco.mjtJoint.mjJNT_FREE:
+            return
+
+        qpos_adr = self.model.jnt_qposadr[jid]
+        qvel_adr = self.model.jnt_dofadr[jid]
+
+        self.data.qpos[qpos_adr:qpos_adr + 3] = center
+        self.data.qpos[qpos_adr + 3:qpos_adr + 7] = quat
+        self.data.qvel[qvel_adr:qvel_adr + 6] = 0.0
+
+    def _compute_geom_err_to_target(self):
+        if self.target_tripod is None:
+            return 0.0
+
+        th = self._get_site_pos("th_tip_site")
+        ff = self._get_site_pos("ff_tip_site")
+        mf = self._get_site_pos("mf_tip_site")
+
+        e_th = np.linalg.norm(th - self.target_tripod["pth"])
+        e_ff = np.linalg.norm(ff - self.target_tripod["pff"])
+        e_mf = np.linalg.norm(mf - self.target_tripod["pmf"])
+
+        return float((e_th + e_ff + e_mf) / 3.0)
+
+    def _contact_normal(self, contact):
+        # MuJoCo contact.frame 的前 3 个数是 contact normal 方向。
+        R_contact = np.array(contact.frame, dtype=np.float64).reshape(3, 3)
+        n = R_contact[0, :].copy()
+        return self._normalize(n)
+
+    def _compute_normal_align_score(self):
+        if self.target_tripod is None:
+            return 0.0
+
+        # 这里用找点时同一个几何目标：normal 与 height 平行。
+        # contact normal 的正负方向受 geom1/geom2 影响，所以 reward 用 abs(dot)。
+        height_dir = self.target_tripod.get("height_dir", None)
+        if height_dir is None:
+            pth = self.target_tripod["pth"]
+            pff = self.target_tripod["pff"]
+            pmf = self.target_tripod["pmf"]
+            mid = 0.5 * (pff + pmf)
+            height_dir = self._normalize(pth - mid)
+        else:
+            height_dir = self._normalize(height_dir)
+
+        score_th = score_ff = score_mf = 0.0
+        has_th = has_ff = has_mf = False
+
+        for i in range(self.data.ncon):
+            c = self.data.contact[i]
+            g1, g2 = int(c.geom1), int(c.geom2)
+
+            if not (g1 == self.object_gid or g2 == self.object_gid):
+                continue
+
+            other = g2 if g1 == self.object_gid else g1
+            n = self._contact_normal(c)
+            s = abs(float(np.dot(n, height_dir)))
+
+            if other in self.thumb_gids:
+                has_th = True
+                score_th = max(score_th, s)
+            elif other in self.index_gids:
+                has_ff = True
+                score_ff = max(score_ff, s)
+            elif other in self.middle_gids:
+                has_mf = True
+                score_mf = max(score_mf, s)
+
+        s_th = score_th if has_th else 0.0
+        s_ff = score_ff if has_ff else 0.0
+        s_mf = score_mf if has_mf else 0.0
+
+        return float(np.clip((s_th + s_ff + s_mf) / 3.0, 0.0, 1.0))
+
+    # ===== control =====
     def _default_ctrl(self):
         ctrl = np.zeros(self.nu, dtype=np.float32)
         for i in range(self.nu):
-            low, high = self.model.actuator_ctrlrange[i]
-            ctrl[i] = 0.5 * (low + high)
+            lo, hi = self.model.actuator_ctrlrange[i]
+            ctrl[i] = 0.5 * (lo + hi)
         return ctrl
 
     def _action_to_ctrl(self, action):
-        # Phase 4: 完全冻结
         if self.phase == 4 and self.freeze_ctrl is not None:
             ctrl = self.freeze_ctrl.copy()
-
-            for aid, target in self.locked_act_target.items():
-                ctrl[aid] = target
-
+            for aid, t in self.locked_act_target.items():
+                ctrl[aid] = t
             self.prev_ctrl = ctrl.copy()
             return ctrl
 
-        # 非冻结阶段
         if self.action_type == "absolute":
             ctrl = np.zeros(self.nu, dtype=np.float32)
             for i in range(self.nu):
@@ -704,88 +747,62 @@ class DexHandGraspEnv(gym.Env):
 
         elif self.action_type == "delta":
             ctrl = self.prev_ctrl.copy()
-
-            # 分阶段控制尺度
             if self.phase == 1:
-                effective_scale = 0.001         # 例如 0.005
+                eff = self.delta_scale
             elif self.phase == 2:
-                effective_scale = 0.0003                    # 接触阶段更柔和
+                eff = self.delta_scale * 0.5
             elif self.phase == 3:
-                effective_scale = 0.0001                    # 稳定微调阶段极小
+                eff = self.delta_scale * 0.25
             else:
-                effective_scale = 0.0
+                eff = 0.0
 
             for i in range(self.nu):
                 lo, hi = self.model.actuator_ctrlrange[i]
-                delta = effective_scale * action[i] * (hi - lo)
+                delta = eff * action[i] * (hi - lo)
                 ctrl[i] = np.clip(ctrl[i] + delta, lo, hi)
-
         else:
             raise ValueError(f"未知 action_type: {self.action_type}")
 
-        # 锁 RF/LF 到 0
-        for aid, target in self.locked_act_target.items():
-            ctrl[aid] = target
+        for aid, t in self.locked_act_target.items():
+            ctrl[aid] = t
 
         self.prev_ctrl = ctrl.copy()
         return ctrl
 
-
-
-
-    # =====================================================
-    # Termination
-    # =====================================================
+    # ===== termination =====
     def _check_terminated(self):
         obj_pos = self._get_object_pos()
-
-        # 物体飞太远
         if np.linalg.norm(obj_pos) > 5.0:
             return True
 
-        # phase2: 已经进入接触阶段，但连续丢失太久，直接结束
-        if self.phase == 2 and self.loss_streak >= 6:
+        if self.phase in [2, 3] and self.loss_streak >= 8:
             return True
 
-        # phase3: 进入稳定阶段后又丢失太久，直接结束
-        if self.phase == 3 and self.loss_streak >= 6:
-            return True
-
-        # phase4 成功
         if self.phase == 4 and self.freeze_steps >= self.max_freeze_steps and self.last_contact_sum >= 2:
             return True
 
-        # phase4 掉了
         if self.phase == 4 and self.loss_streak >= 4:
             return True
 
         return False
 
-
-
-
-
-    # =====================================================
-    # Object randomization
-    # =====================================================
+    # ===== fallback =====
     def _randomize_object_pose_if_possible(self):
         jadr = self.model.body_jntadr[self.object_bid]
         jnum = self.model.body_jntnum[self.object_bid]
-
         if jnum <= 0:
             return
 
         jid = jadr
-        jtype = self.model.jnt_type[jid]
-        if jtype != mujoco.mjtJoint.mjJNT_FREE:
+        if self.model.jnt_type[jid] != mujoco.mjtJoint.mjJNT_FREE:
             return
 
         qpos_adr = self.model.jnt_qposadr[jid]
+        qvel_adr = self.model.jnt_dofadr[jid]
 
-        self.data.qpos[qpos_adr + 0] += np.random.uniform(-0.01, 0.01)
-        self.data.qpos[qpos_adr + 1] += np.random.uniform(-0.01, 0.01)
-        self.data.qpos[qpos_adr + 2] += np.random.uniform(-0.005, 0.005)
+        self.data.qpos[qpos_adr + 0] = np.random.uniform(-0.01, 0.05)
+        self.data.qpos[qpos_adr + 1] = np.random.uniform(-0.02, 0.04)
+        self.data.qpos[qpos_adr + 2] = np.random.uniform(0.35, 0.41)
 
         self.data.qpos[qpos_adr + 3:qpos_adr + 7] = np.array([1.0, 0.0, 0.0, 0.0])
-        qvel_adr = self.model.jnt_dofadr[jid]
         self.data.qvel[qvel_adr:qvel_adr + 6] = 0.0

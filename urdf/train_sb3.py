@@ -1,34 +1,20 @@
 import os
-
 from stable_baselines3 import SAC
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
 from stable_baselines3.common.env_checker import check_env
-
 from dexhand_env import DexHandGraspEnv
 
 
 def make_env():
     env = DexHandGraspEnv(
         model_path="dexhand_lh_rl.xml",
-
-        # 你需要保证物体也有这个名字
+        workspace_path="workspace_tripod.npz",
         object_geom_name="object_geom",
-
-        # 这里改成你实际的 geom 名字
-        thumb_geom_name="th_tip_geom",
-        index_geom_name="ff_tip_geom",
-        middle_geom_name="mf_tip_geom",
-
-        # 如果你也给物体 body 命名了，可以填；否则不填也行
-        # object_body_name="object",
-
         frame_skip=5,
-        max_steps=200,
-
-        # 推荐先用 delta 控制
+        max_steps=220,
         action_type="delta",
-        delta_scale=0.001,
+        delta_scale=0.002,
     )
     return Monitor(env)
 
@@ -36,6 +22,7 @@ def make_env():
 def main():
     os.makedirs("logs", exist_ok=True)
     os.makedirs("logs/tb", exist_ok=True)
+    os.makedirs("logs/best_model", exist_ok=True)
     os.makedirs("checkpoints", exist_ok=True)
 
     env = make_env()
@@ -46,7 +33,7 @@ def main():
     checkpoint_callback = CheckpointCallback(
         save_freq=10000,
         save_path="./checkpoints/",
-        name_prefix="dexhand_tripod_named_sac"
+        name_prefix="dexhand_tripod_workspace_sac",
     )
 
     eval_callback = EvalCallback(
@@ -63,7 +50,7 @@ def main():
         env=env,
         learning_rate=3e-4,
         buffer_size=300000,
-        learning_starts=5000,
+        learning_starts=8000,
         batch_size=256,
         tau=0.005,
         gamma=0.99,
@@ -76,14 +63,13 @@ def main():
     )
 
     model.learn(
-        total_timesteps=20000,
+        total_timesteps=300000,
         callback=[checkpoint_callback, eval_callback],
         log_interval=10,
         progress_bar=False,
     )
 
-    model.save("dexhand_tripod_named_sac_final")
-
+    model.save("dexhand_tripod_workspace_sac_final")
     env.close()
     eval_env.close()
 
