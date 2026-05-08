@@ -421,6 +421,28 @@
     <!-- 可选：左右并联机构互相不碰 -->
     <exclude body1="left_linear_rod_link"       body2="right_linear_rod_link"/>
     <exclude body1="left_wrist_rod_link"        body2="right_wrist_rod_link"/>
+
+
+    <!-- 拇指根部/近端 和 掌部 -->
+    <exclude body1="THJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="THJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 食指根部/近端 和 掌部 -->
+    <exclude body1="FFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="FFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 中指根部/近端 和 掌部 -->
+    <exclude body1="MFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="MFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 无名指根部/近端 和 掌部 -->
+    <exclude body1="RFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="RFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 小指根部/近端 和 掌部 -->
+    <exclude body1="LFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="LFJ3" body2="palm_wrist_connector_link"/>
+
   </contact>
 
   <actuator>

@@ -1,6 +1,6 @@
 <mujoco model="dexhand">
   <compiler angle="radian" meshdir="../meshes/" autolimits="true"/>
-  <option gravity="0 0 0"/>
+  <option gravity="0 0 -9.8"/>
   <asset>
     <mesh name="base_link" content_type="model/stl" file="base_link.STL"/>
     <mesh name="hooke_joint_link" content_type="model/stl" file="hooke_joint_link.STL"/>
@@ -109,7 +109,7 @@
 
   <worldbody>
     <!-- 物体定义在这里，放在手的前方，稍微偏右一些 -->
-    <body name="object" pos="0.03 0.08 0.38">
+    <!-- <body name="object" pos="0.03 0.08 0.38">
         <freejoint/>
         <geom name="object_geom"
               type="box"
@@ -120,7 +120,7 @@
               contype="1"
               conaffinity="1"
               friction="1.5 0.05 0.01"/>
-    </body>
+    </body> -->
 
     <geom type="mesh" mesh="base_link" contype="0" conaffinity="0"/>
     <body name="hooke_joint_link" pos="0 0.017433 0.21">
@@ -509,6 +509,27 @@
     <!-- 可选：左右并联机构互相不碰 -->
     <exclude body1="left_linear_rod_link"       body2="right_linear_rod_link"/>
     <exclude body1="left_wrist_rod_link"        body2="right_wrist_rod_link"/>
+
+    <!-- 拇指根部/近端 和 掌部 -->
+    <exclude body1="THJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="THJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 食指根部/近端 和 掌部 -->
+    <exclude body1="FFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="FFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 中指根部/近端 和 掌部 -->
+    <exclude body1="MFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="MFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 无名指根部/近端 和 掌部 -->
+    <exclude body1="RFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="RFJ3" body2="palm_wrist_connector_link"/>
+
+    <!-- 小指根部/近端 和 掌部 -->
+    <exclude body1="LFJ4" body2="palm_wrist_connector_link"/>
+    <exclude body1="LFJ3" body2="palm_wrist_connector_link"/>
+
   </contact>
 
   <actuator>
